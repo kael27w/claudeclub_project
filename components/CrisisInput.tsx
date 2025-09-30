@@ -157,6 +157,7 @@ export function CrisisInput({ onSubmit, isLoading = false }: CrisisInputProps) {
             rows={6}
             className="
               w-full px-4 py-3 rounded-lg border-2 border-gray-300
+              text-gray-900 placeholder:text-gray-500
               focus:border-solution-blue focus:ring-2 focus:ring-solution-blue/20
               disabled:bg-gray-100 disabled:cursor-not-allowed
               transition-colors resize-none
@@ -180,6 +181,7 @@ export function CrisisInput({ onSubmit, isLoading = false }: CrisisInputProps) {
               disabled={isLoading}
               className="
                 w-full px-4 py-3 rounded-lg border-2 border-gray-300
+                text-gray-900 placeholder:text-gray-500
                 focus:border-solution-blue focus:ring-2 focus:ring-solution-blue/20
                 disabled:bg-gray-100 disabled:cursor-not-allowed
                 transition-colors
@@ -202,6 +204,7 @@ export function CrisisInput({ onSubmit, isLoading = false }: CrisisInputProps) {
               disabled={isLoading}
               className="
                 w-full px-4 py-3 rounded-lg border-2 border-gray-300
+                text-gray-900 placeholder:text-gray-500
                 focus:border-solution-blue focus:ring-2 focus:ring-solution-blue/20
                 disabled:bg-gray-100 disabled:cursor-not-allowed
                 transition-colors
