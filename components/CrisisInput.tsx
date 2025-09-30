@@ -133,7 +133,7 @@ export function CrisisInput({ onSubmit, isLoading = false }: CrisisInputProps) {
               <div className="font-semibold text-gray-900 mb-1">
                 {scenario.title}
               </div>
-              <div className="text-xs text-gray-600 line-clamp-2">
+              <div className="text-xs text-gray-900 line-clamp-2">
                 {scenario.description}
               </div>
             </button>
