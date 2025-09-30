@@ -247,8 +247,9 @@ Generate 3 distinct solutions (Fast, Balanced, Economical) in JSON array format.
   /**
    * Helper: Simulate step execution with realistic delays
    */
-  private async simulateStepExecution(step: SolutionStep): Promise<void> {
+  private async simulateStepExecution(_step: SolutionStep): Promise<void> {
     // In demo mode, simulate realistic processing time
+    // In a real implementation, we could use _step data to determine execution time
     const delay = Math.random() * 2000 + 1000; // 1-3 seconds
     await new Promise((resolve) => setTimeout(resolve, delay));
   }
@@ -256,7 +257,8 @@ Generate 3 distinct solutions (Fast, Balanced, Economical) in JSON array format.
   /**
    * Helper: Generate next action recommendations
    */
-  private generateNextActions(solution: Solution): string[] {
+  private generateNextActions(_solution: Solution): string[] {
+    // In a real implementation, we could customize recommendations based on solution type
     return [
       'Monitor execution status',
       'Keep emergency contacts updated',
