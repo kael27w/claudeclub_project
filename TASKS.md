@@ -77,17 +77,21 @@
   - Build solution refinement capability
 
 ### API Routes
-- [ ] [API-001-P0] ⚠️ Create `/api/crisis/analyze/route.ts`
-  - POST endpoint for crisis input
-  - Return structured analysis
+- [✅] [API-001-P0] ⚠️ Create `/api/crisis/analyze/route.ts`
+  - Created POST endpoint for crisis input with validation
+  - Returns structured CrisisAnalysis
+  - Added GET health check endpoint
 
-- [ ] [API-002-P0] Create `/api/crisis/solve/route.ts`
-  - POST endpoint for solution generation
-  - Stream responses for real-time feel
+- [✅] [API-002-P0] Create `/api/crisis/solve/route.ts`
+  - Created POST endpoint for solution generation
+  - Returns array of 3 solutions (Fast/Balanced/Economical)
+  - Added GET health check endpoint
 
-- [ ] [API-003-P0] Create `/api/crisis/status/route.ts`
-  - SSE endpoint for live updates
-  - Mock execution steps
+- [✅] [API-003-P0] Create `/api/crisis/status/route.ts`
+  - Created POST endpoint with SSE support for live updates
+  - Implements Server-Sent Events for real-time progress streaming
+  - Added standard execution mode and streaming mode
+  - Added GET health check endpoint
 
 ---
 
@@ -364,8 +368,9 @@
 - **Decision**: Created reusable Claude client wrapper with testClaudeConnection() and sendMessage() functions for all API interactions
 - **Decision**: Implemented full CrisisManagementAgent with 3-tier solution generation (Fast/Balanced/Economical)
 - **Decision**: Created comprehensive TypeScript types for crisis management system
-- **Completed**: SETUP-001 through SETUP-007 (baseline + Claude client) + AI-001, AI-002, AI-003 (core agent logic) - ~2 hours
-- **Next**: API-001 (Create /api/crisis/analyze route)
+- **Decision**: Implemented all 3 API routes with SSE support for real-time updates
+- **Completed**: SETUP + AI + API routes (all Milestone 1 & 2 core tasks) - ~2.5 hours
+- **Next**: UI-001 (Create CrisisInput.tsx component)
 - **Blocker**: None (user needs to add ANTHROPIC_API_KEY to .env.local to run tests)
 - **Learning**: Next.js 14 App Router structure differs from Pages Router - all files in app/ directory
 
