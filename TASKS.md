@@ -1,8 +1,8 @@
 # TASKS.md - 48-Hour Competition Sprint
 
-**Sprint Start:** [DATE/TIME]  
-**Competition Deadline:** [DATE/TIME + 48 hours]  
-**Current Status:** NOT STARTED  
+**Sprint Start:** September 30, 2025 - 14:00
+**Competition Deadline:** October 2, 2025 - 14:00 (48 hours)
+**Current Status:** IN PROGRESS - Milestone 1 (Setup) Complete
 **Demo Video Backup:** Required by Hour 46
 
 ---
@@ -22,20 +22,21 @@
 **Goal:** Development environment ready, Claude API working
 
 ### Setup Tasks
-- [ ] [SETUP-001-P0] ⚠️ Create Next.js project with TypeScript and Tailwind
-  - Command: `npx create-next-app@latest adaptive-travel-agent --typescript --tailwind --app`
-- [ ] [SETUP-002-P0] ⚠️ Install essential dependencies
-  ```bash
-  npm install @anthropic-ai/sdk framer-motion react-hot-toast 
-  @tanstack/react-query socket.io socket.io-client recharts lucide-react
-  ```
-- [ ] [SETUP-003-P0] Create project structure
-  - Create folders: `/app/api/crisis`, `/components`, `/lib`
-- [ ] [SETUP-004-P0] ⚠️ Setup environment variables
-  - Create `.env.local` with `ANTHROPIC_API_KEY`
-- [ ] [SETUP-005-P0] Initialize Git repository and first commit
+- [✅] [SETUP-001-P0] ⚠️ Create Next.js project with TypeScript and Tailwind
+  - Created full Next.js 14 setup with App Router, TypeScript, Tailwind CSS
+  - Configured strict TypeScript settings
+  - Setup PostCSS and Tailwind config with crisis management color scheme
+- [✅] [SETUP-002-P0] ⚠️ Install essential dependencies
+  - Installed all dependencies: @anthropic-ai/sdk, framer-motion, react-hot-toast, @tanstack/react-query, socket.io, socket.io-client, recharts, lucide-react
+  - Build verified successfully (474 packages, 0 vulnerabilities)
+- [✅] [SETUP-003-P0] Create project structure
+  - Created folders: `/app/api/crisis/analyze`, `/app/api/crisis/solve`, `/app/api/crisis/status`, `/app/api/socket`, `/components`, `/lib`, `/public/demo-assets`
+- [✅] [SETUP-004-P0] ⚠️ Setup environment variables
+  - Created `.env.local.example` with ANTHROPIC_API_KEY and demo mode configuration
+- [✅] [SETUP-005-P0] Initialize Git repository and first commit
+  - Committed baseline setup with task ID [SETUP-001-P0]
 - [ ] [SETUP-006-P1] Setup Vercel project for deployment
-- [ ] [SETUP-007-P0] ⚠️ Test Claude API connection
+- [🏃] [SETUP-007-P0] ⚠️ Test Claude API connection
   - Create `lib/claude-client.ts`
   - Verify API key works with simple test
 
@@ -352,9 +353,14 @@
 ## 📝 NOTES & DECISIONS
 
 ### Hour 0-12 Notes
-- Decision: [Document key decisions here]
-- Blocker: [Note any blockers]
-- Learning: [Key learnings]
+- **Decision**: Built project from scratch instead of using create-next-app wizard for better control over configuration
+- **Decision**: Created comprehensive .env.local.example with DEMO_MODE flag for reliable demo scenarios
+- **Decision**: Setup strict TypeScript configuration to catch errors early
+- **Decision**: Extended Tailwind config with crisis management color scheme (crisis-red, solution-blue, status indicators)
+- **Completed**: SETUP-001 through SETUP-005 (baseline project setup) - ~1 hour
+- **In Progress**: SETUP-007 (Claude API integration test)
+- **Blocker**: None
+- **Learning**: Next.js 14 App Router structure differs from Pages Router - all files in app/ directory
 
 ### Hour 12-24 Notes
 - Decision: 
@@ -377,7 +383,7 @@
 
 | Milestone | Planned Hours | Actual Hours | Status |
 |-----------|--------------|--------------|--------|
-| M1: Setup | 2 | - | NOT_STARTED |
+| M1: Setup | 2 | ~1 | IN_PROGRESS (90% complete) |
 | M2: Claude | 6 | - | NOT_STARTED |
 | M3: Core UI | 4 | - | NOT_STARTED |
 | M4: Integration | 4 | - | NOT_STARTED |
