@@ -6,6 +6,12 @@ import Anthropic from '@anthropic-ai/sdk';
  */
 
 // Initialize the Anthropic client
+// Note: API key is loaded from environment variables
+if (!process.env.ANTHROPIC_API_KEY) {
+  console.error('⚠️  ANTHROPIC_API_KEY is not set in environment variables!');
+  console.error('Please add it to your .env.local file');
+}
+
 const client = new Anthropic({
   apiKey: process.env.ANTHROPIC_API_KEY || '',
 });
@@ -75,6 +81,14 @@ export async function sendMessage(
   error?: string;
 }> {
   try {
+    // Check if API key is present
+    if (!process.env.ANTHROPIC_API_KEY) {
+      return {
+        success: false,
+        error: 'ANTHROPIC_API_KEY is not set. Please add it to your .env.local file.',
+      };
+    }
+
     const messageParams: Anthropic.Messages.MessageCreateParamsNonStreaming = {
       model: 'claude-3-5-sonnet-20241022',
       max_tokens: 1024,
