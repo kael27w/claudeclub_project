@@ -1,0 +1,321 @@
+/**
+ * Perplexity Research Agents - Dynamic research for any destination worldwide
+ * Uses Perplexity API to gather real-time information
+ */
+
+import type { ParsedLocation, UserOrigin } from './location-parser';
+import type { DestinationQuery } from './types/destination';
+
+export interface PerplexityResearchResults {
+  housing: string;
+  cultural: string;
+  safety: string;
+  costs: string;
+  flights: string;
+  timestamp: number;
+}
+
+interface ResearchAgent {
+  name: string;
+  generatePrompt: (
+    location: ParsedLocation,
+    origin: UserOrigin,
+    query: DestinationQuery
+  ) => string;
+  maxTokens: number;
+}
+
+export class PerplexityResearchService {
+  private apiKey: string;
+  private readonly baseURL = 'https://api.perplexity.ai/chat/completions';
+
+  constructor(apiKey?: string) {
+    this.apiKey = apiKey || process.env.PERPLEXITY_API_KEY || '';
+  }
+
+  /**
+   * Conduct comprehensive research using 5 specialized agents
+   */
+  async conductResearch(
+    location: ParsedLocation,
+    origin: UserOrigin,
+    query: DestinationQuery
+  ): Promise<PerplexityResearchResults> {
+    // Run all 5 agents in parallel for speed
+    const [housing, cultural, safety, costs, flights] = await Promise.all([
+      this.housingAgent(location, origin, query),
+      this.culturalAgent(location, origin, query),
+      this.safetyAgent(location, origin, query),
+      this.costsAgent(location, origin, query),
+      this.flightsAgent(location, origin, query),
+    ]);
+
+    return {
+      housing,
+      cultural,
+      safety,
+      costs,
+      flights,
+      timestamp: Date.now(),
+    };
+  }
+
+  /**
+   * Agent 1: Housing Research
+   * Finds current student housing costs and options
+   */
+  private async housingAgent(
+    location: ParsedLocation,
+    _origin: UserOrigin,
+    query: DestinationQuery
+  ): Promise<string> {
+    const prompt = `
+Find current student housing costs in ${location.city}, ${location.country} for a ${query.durationMonths}-month stay:
+
+1. University dormitories near major universities (monthly rent in ${location.currency})
+2. Shared apartments in safe neighborhoods for international students (monthly rent)
+3. Monthly Airbnb rates for 3-6 month stays
+4. Average utilities cost (electricity, water, internet) per month
+5. Security deposits and typical contract requirements
+6. Specific neighborhoods recommended for students (safe, convenient, affordable)
+7. Distance and transportation to major universities
+
+Focus on practical, current information with specific price ranges. Include neighborhood names and proximity to public transport.
+`;
+
+    return this.queryPerplexity(prompt, 1000);
+  }
+
+  /**
+   * Agent 2: Cultural Intelligence
+   * Researches local culture, customs, and student life
+   */
+  private async culturalAgent(
+    location: ParsedLocation,
+    origin: UserOrigin,
+    query: DestinationQuery
+  ): Promise<string> {
+    const interestsText = query.interests.length > 0
+      ? ` especially related to ${query.interests.join(', ')}`
+      : '';
+
+    const prompt = `
+Research ${location.city}, ${location.country} culture for international students from ${origin.country}${interestsText}:
+
+1. 20 essential ${location.primaryLanguage} phrases for daily life (greetings, ordering food, asking directions, emergencies)
+2. Student-friendly attractions and activities${interestsText}
+3. Local food scene: typical costs for groceries vs restaurants, popular student hangouts
+4. Cultural customs and etiquette that differ from ${origin.country} (greetings, tipping, punctuality, personal space)
+5. Student discounts and special programs available for international students
+6. Social norms around making friends, dating, and nightlife
+7. Best ways to integrate into local student community
+8. Cultural events and festivals during the academic year
+
+Provide specific examples and practical advice. Include current prices in ${location.currency}.
+`;
+
+    return this.queryPerplexity(prompt, 1200);
+  }
+
+  /**
+   * Agent 3: Safety & Current Events
+   * Researches safety, news, and practical information
+   */
+  private async safetyAgent(
+    location: ParsedLocation,
+    origin: UserOrigin,
+    _query: DestinationQuery
+  ): Promise<string> {
+    const prompt = `
+Current safety information for ${location.city}, ${location.country} international student areas:
+
+1. Safety ratings by neighborhood (use recent crime statistics from 2024-2025)
+2. Recent news affecting international students (last 60 days)
+3. Transportation safety: public transit, taxis, ride-sharing, walking at night
+4. Emergency contacts: police, hospitals, embassy/consulate for ${origin.country} citizens
+5. Common scams targeting students and tourists
+6. Natural disaster risks (earthquakes, floods, typhoons) and weather patterns
+7. Health and medical system: how to access healthcare as a student
+8. Best mobile carriers and SIM card options for international students
+9. Banking: best banks for international students, how to open account
+
+Focus on practical, current safety information. Include specific phone numbers for emergencies.
+`;
+
+    return this.queryPerplexity(prompt, 1000);
+  }
+
+  /**
+   * Agent 4: Cost of Living
+   * Detailed breakdown of monthly living expenses
+   */
+  private async costsAgent(
+    location: ParsedLocation,
+    _origin: UserOrigin,
+    query: DestinationQuery
+  ): Promise<string> {
+    const dietaryText = query.dietaryRestrictions && query.dietaryRestrictions.length > 0
+      ? ` (${query.dietaryRestrictions.join(', ')} options)`
+      : '';
+
+    const prompt = `
+Detailed monthly living costs in ${location.city}, ${location.country} for students:
+
+1. Food costs${dietaryText}:
+   - Weekly grocery shopping for basic meals
+   - Eating at inexpensive local restaurants
+   - Mid-range restaurant meals
+   - Local markets vs supermarkets
+   - Coffee shops and casual dining
+
+2. Transportation:
+   - Monthly public transit pass (subway, bus, tram)
+   - Bike sharing programs
+   - Taxi/Uber average costs
+   - Bicycle purchase or rental
+
+3. Utilities (if not included in rent):
+   - Mobile phone plan with data (student rates)
+   - Internet (shared apartment)
+   - Electricity, water, gas
+
+4. Entertainment and activities:
+   - Movie tickets (student price)
+   - Concert/event tickets
+   - Gym membership
+   - Sports activities
+   - Nightlife (club cover charges, drinks)
+
+5. Other essentials:
+   - Laundry (coin-op or service)
+   - Toiletries and household items
+   - Clothing and shoes
+   - Haircuts
+
+Provide specific numerical ranges in ${location.currency} and convert to USD. Use current 2024-2025 prices.
+`;
+
+    return this.queryPerplexity(prompt, 1200);
+  }
+
+  /**
+   * Agent 5: Flight Intelligence
+   * Researches flight prices and booking strategies
+   */
+  private async flightsAgent(
+    location: ParsedLocation,
+    origin: UserOrigin,
+    _query: DestinationQuery
+  ): Promise<string> {
+    const originAirport = origin.airportCode || `major airports near ${origin.city || origin.country}`;
+    const destAirport = location.airportCode || location.city;
+
+    const prompt = `
+Flight pricing from ${originAirport} (${origin.country}) to ${destAirport} (${location.city}, ${location.country}):
+
+1. Current price ranges for 2024-2025:
+   - Budget airlines (basic economy)
+   - Standard airlines (economy)
+   - Premium economy options
+
+2. Seasonal price variations:
+   - Cheapest months to fly
+   - Most expensive months
+   - Typical price difference between seasons
+
+3. Booking strategy:
+   - Optimal booking window (how far in advance)
+   - Best days of week to fly
+   - Best days of week to book
+
+4. Airlines and routes:
+   - Major airlines serving this route
+   - Typical layover cities
+   - Direct flight availability and duration
+   - Budget airline options
+
+5. Money-saving tips:
+   - Flexible date strategies
+   - Nearby alternative airports
+   - Student discount programs
+   - Points and miles opportunities
+
+Provide specific price ranges in both USD and ${location.currency}. Use current 2024-2025 market data.
+`;
+
+    return this.queryPerplexity(prompt, 1000);
+  }
+
+  /**
+   * Query Perplexity API with a research prompt
+   */
+  private async queryPerplexity(
+    prompt: string,
+    maxTokens: number
+  ): Promise<string> {
+    // If no API key, return placeholder for development
+    if (!this.apiKey || this.apiKey === '') {
+      console.log('[Perplexity] No API key - returning placeholder');
+      return `[Research placeholder - Perplexity API key not configured]\n\nPrompt was:\n${prompt}\n\nIn production, this would return real-time research from Perplexity.`;
+    }
+
+    try {
+      const response = await fetch(this.baseURL, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${this.apiKey}`,
+        },
+        body: JSON.stringify({
+          model: 'llama-3.1-sonar-large-128k-online', // Perplexity's online model
+          messages: [
+            {
+              role: 'system',
+              content: 'You are a travel research assistant. Provide detailed, current, and accurate information with specific numbers, prices, and recommendations.',
+            },
+            {
+              role: 'user',
+              content: prompt,
+            },
+          ],
+          max_tokens: maxTokens,
+          temperature: 0.2, // Low temperature for factual research
+          top_p: 0.9,
+          search_domain_filter: ['edu', 'gov', 'org'], // Prefer authoritative sources
+          return_images: false,
+          return_related_questions: false,
+        }),
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error('[Perplexity] API error:', response.status, errorText);
+        throw new Error(`Perplexity API error: ${response.status}`);
+      }
+
+      const data = await response.json();
+      const content = data.choices[0]?.message?.content;
+
+      if (!content) {
+        throw new Error('No content in Perplexity response');
+      }
+
+      return content;
+    } catch (error) {
+      console.error('[Perplexity] Query failed:', error);
+
+      // Return informative error message
+      return `[Perplexity research temporarily unavailable]\n\nPrompt: ${prompt.substring(0, 200)}...\n\nError: ${error instanceof Error ? error.message : 'Unknown error'}\n\nWill use fallback data or cached results.`;
+    }
+  }
+
+  /**
+   * Check if Perplexity API is configured and available
+   */
+  isConfigured(): boolean {
+    return this.apiKey !== '';
+  }
+}
+
+// Export singleton instance
+export const perplexityService = new PerplexityResearchService();

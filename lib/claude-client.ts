@@ -67,12 +67,62 @@ export async function testClaudeConnection(): Promise<{
 }
 
 /**
- * Send a message to Claude and get a response
+ * Send a message to Claude and get a response (throws on error)
  * @param prompt - The user's message
  * @param systemPrompt - Optional system prompt for context
- * @returns Promise with Claude's response
+ * @param maxTokens - Optional max tokens (default: 1024)
+ * @returns Promise with Claude's response text
+ * @throws Error if API call fails
  */
 export async function sendMessage(
+  prompt: string,
+  systemPrompt?: string,
+  maxTokens: number = 1024
+): Promise<string> {
+  // Check if API key is present
+  if (!process.env.ANTHROPIC_API_KEY) {
+    throw new Error('ANTHROPIC_API_KEY is not set. Please add it to your .env.local file.');
+  }
+
+  const messageParams: Anthropic.Messages.MessageCreateParamsNonStreaming = {
+    model: 'claude-3-5-sonnet-20241022',
+    max_tokens: maxTokens,
+    messages: [
+      {
+        role: 'user',
+        content: prompt,
+      },
+    ],
+  };
+
+  // Add system prompt if provided
+  if (systemPrompt) {
+    messageParams.system = systemPrompt;
+  }
+
+  try {
+    const response = await client.messages.create(messageParams);
+
+    // Extract text content from response
+    const textContent = response.content.find((block) => block.type === 'text');
+    if (textContent && 'text' in textContent) {
+      return textContent.text;
+    }
+
+    throw new Error('No text content in Claude response');
+  } catch (error) {
+    if (error instanceof Anthropic.APIError) {
+      throw new Error(`Claude API Error: ${error.message}`);
+    }
+    throw error;
+  }
+}
+
+/**
+ * Legacy sendMessage for backwards compatibility
+ * @deprecated Use sendMessage instead (now throws errors)
+ */
+export async function sendMessageSafe(
   prompt: string,
   systemPrompt?: string
 ): Promise<{
@@ -81,44 +131,10 @@ export async function sendMessage(
   error?: string;
 }> {
   try {
-    // Check if API key is present
-    if (!process.env.ANTHROPIC_API_KEY) {
-      return {
-        success: false,
-        error: 'ANTHROPIC_API_KEY is not set. Please add it to your .env.local file.',
-      };
-    }
-
-    const messageParams: Anthropic.Messages.MessageCreateParamsNonStreaming = {
-      model: 'claude-3-5-sonnet-20241022',
-      max_tokens: 1024,
-      messages: [
-        {
-          role: 'user',
-          content: prompt,
-        },
-      ],
-    };
-
-    // Add system prompt if provided
-    if (systemPrompt) {
-      messageParams.system = systemPrompt;
-    }
-
-    const response = await client.messages.create(messageParams);
-
-    // Extract text content from response
-    const textContent = response.content.find((block) => block.type === 'text');
-    if (textContent && 'text' in textContent) {
-      return {
-        success: true,
-        response: textContent.text,
-      };
-    }
-
+    const response = await sendMessage(prompt, systemPrompt);
     return {
-      success: false,
-      error: 'No text content in response',
+      success: true,
+      response,
     };
   } catch (error) {
     return {
