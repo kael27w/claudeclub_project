@@ -652,37 +652,66 @@ Remember: You're building for budget-conscious students who need reliable, safe,
 ## 🚦 CURRENT SPRINT STATUS
 
 **Sprint Start:** September 30, 2025 - 14:00
-**Current Time:** Hour 3.5 of 48
-**Current Milestone:** M4 - Integration (COMPLETE) | M5 - Demo Scenarios (NEXT)
-**Status:** 🎉 AHEAD OF SCHEDULE - Core MVP complete 4.5 hours early!
+**Current Time:** Hour 5 of 48
+**Current Milestone:** Destination Intelligence MVP COMPLETE ✅ | API Integration (NEXT)
+**Status:** 🚀 AHEAD OF SCHEDULE BY ~10 HOURS - Destination Intelligence MVP Complete!
+
+**🔄 MAJOR PIVOT (Hour 4):**
+- **From:** Crisis Management (reactive, emergency-only)
+- **To:** Study Abroad Destination Intelligence (proactive, all students)
+- **Rationale:** Broader market appeal, addresses real pain point (outdated university fact sheets)
+- **Preserved:** Complete crisis management system backed up in `/crisis-backup/` for future integration
 
 **🏆 Major Achievements:**
 - ✅ **Milestone 1 (Setup):** 100% Complete - All infrastructure ready
-- ✅ **Milestone 2 (Claude Integration):** 100% Complete - Full AI agent pipeline working
-- ✅ **Milestone 3 (Core UI):** 100% Complete - All components built and styled
-- ✅ **Milestone 4 (Integration):** 100% Complete - End-to-end flow implemented
+- ✅ **Milestone 2 (Claude Integration):** 100% Complete - Crisis Management Agent (backed up)
+- ✅ **Milestone 3 (Core UI):** 100% Complete - Crisis UI components (backed up)
+- ✅ **Milestone 4 (Integration):** 100% Complete - Crisis end-to-end flow (backed up)
+- ✅ **PIVOT:** Crisis system safely backed up with full documentation
+- ✅ **Destination Intelligence MVP:** 100% Complete - Full system with Claude integration
 
-**Completed Tasks (13/13 critical path):**
+**Completed Tasks (19 total):**
 - ✅ SETUP-001 through SETUP-007 (Full project setup + Claude client)
-- ✅ AI-001, AI-002, AI-003 (CrisisManagementAgent with 3-tier solutions)
-- ✅ API-001, API-002, API-003 (All crisis management API routes)
-- ✅ UI-001, UI-002, UI-003, UI-004 (All UI components + full integration)
+- ✅ AI-001, AI-002, AI-003 (CrisisManagementAgent - backed up)
+- ✅ API-001, API-002, API-003 (Crisis API routes - backed up)
+- ✅ UI-001, UI-002, UI-003, UI-004 (Crisis UI - backed up)
+- ✅ BACKUP-001 through BACKUP-004 (Crisis system backup + documentation)
+- ✅ DEST-001 through DEST-006 (Complete Destination Intelligence MVP):
+  * TypeScript interfaces (200+ lines)
+  * DestinationIntelligenceAgent with Claude integration (1000+ lines)
+  * API route for destination analysis
+  * Full UI with comprehensive results display (475 lines)
+  * São Paulo mock data (15+ pages of intelligence)
+  * Demo mode with fallback handling
 
 **Technical Status:**
 - Build: ✅ Successful (0 errors, 0 warnings)
-- TypeScript: ✅ Strict mode compliant
-- Performance: ✅ 93 kB First Load JS
+- TypeScript: ✅ Strict mode compliant (crisis-backup excluded)
+- Server: ✅ Running on http://localhost:3001
+- Dev Environment: ✅ Clean, optimized, functional
 - Architecture: ✅ Clean, type-safe, documented
 
+**What's Working Now:**
+- 🎯 Natural language query input
+- 🤖 Claude/mock data analysis
+- 💰 Cost analysis (flights, housing, living costs)
+- 🎨 Cultural guide (customs, phrases, safety)
+- 📊 Budget optimization (breakdown, tips, feasibility)
+- 🎯 Personalized recommendations (interests, origin, budget)
+- 🔄 Reset and new search functionality
+- ✅ São Paulo mock data (comprehensive, realistic)
+
 **Next Up:**
-- Add ANTHROPIC_API_KEY to .env.local for live testing
-- DEMO-001 (Create demo scenarios for reliable presentations)
-- POLISH-001 through POLISH-006 (Animations, loading states, branding)
+- [ ] API-INT-001, API-INT-002 (Amadeus + Numbeo integration OR enhanced mock data)
+- [ ] DEMO-001, DEMO-002, DEMO-003 (Test and enhance demo scenarios)
+- [ ] DEST-010, DEST-011 (Barcelona and Tokyo mock data)
+- [ ] POLISH-001 through POLISH-006 (Animations, charts, mobile refinement)
+- [ ] CRISIS-INT-001 through CRISIS-INT-004 (Integrate crisis management as secondary feature)
 
 **See TASKS.md and PLANNING.md for detailed progress tracking.**
 
 ---
 
-**Last Updated:** September 30, 2025 - 17:30
-**Version:** 2.0.0 - MVP CORE COMPLETE
+**Last Updated:** September 30, 2025 - Hour 5
+**Version:** 3.0.0 - DESTINATION INTELLIGENCE MVP COMPLETE
 **Maintainer:** Adaptive Travel Agent Team
