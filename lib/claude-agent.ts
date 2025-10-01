@@ -4,6 +4,7 @@
  */
 
 import { sendMessage } from './claude-client';
+import { getMockAnalysis, getMockSolutions } from './mock-data';
 import type {
   CrisisContext,
   CrisisAnalysis,
@@ -11,6 +12,9 @@ import type {
   SolutionStep,
   ExecutionResult,
 } from './types/crisis';
+
+// Check if demo mode is enabled
+const DEMO_MODE = process.env.NEXT_PUBLIC_DEMO_MODE === 'true';
 
 /**
  * Main Crisis Management Agent class
@@ -23,6 +27,13 @@ export class CrisisManagementAgent {
    * @returns Detailed analysis of the crisis
    */
   async analyzeSituation(crisis: CrisisContext): Promise<CrisisAnalysis> {
+    // Use mock data in demo mode
+    if (DEMO_MODE) {
+      console.log('Demo mode: Using mock crisis analysis');
+      await new Promise((resolve) => setTimeout(resolve, 1500)); // Simulate API delay
+      return getMockAnalysis(crisis.description);
+    }
+
     const systemPrompt = `You are an expert travel crisis management assistant. Your role is to analyze travel emergencies and provide clear, actionable insights.
 
 When analyzing a crisis:
@@ -84,9 +95,9 @@ Provide a comprehensive analysis of this crisis situation.`;
       };
     } catch (error) {
       console.error('Error analyzing crisis:', error);
-      throw new Error(
-        `Crisis analysis failed: ${error instanceof Error ? error.message : 'Unknown error'}`
-      );
+      console.log('API failed, falling back to mock data');
+      // Fallback to mock data if API fails
+      return getMockAnalysis(crisis.description);
     }
   }
 
@@ -100,6 +111,13 @@ Provide a comprehensive analysis of this crisis situation.`;
     crisis: CrisisContext,
     analysis: CrisisAnalysis
   ): Promise<Solution[]> {
+    // Use mock data in demo mode
+    if (DEMO_MODE) {
+      console.log('Demo mode: Using mock solutions');
+      await new Promise((resolve) => setTimeout(resolve, 2000)); // Simulate API delay
+      return getMockSolutions(analysis.crisisType);
+    }
+
     const systemPrompt = `You are an expert travel crisis resolution specialist. Your role is to generate practical, actionable solutions to travel emergencies.
 
 Generate exactly 3 different solution approaches:
@@ -159,9 +177,9 @@ Generate 3 distinct solutions (Fast, Balanced, Economical) in JSON array format.
       }));
     } catch (error) {
       console.error('Error generating solutions:', error);
-      throw new Error(
-        `Solution generation failed: ${error instanceof Error ? error.message : 'Unknown error'}`
-      );
+      console.log('API failed, falling back to mock data');
+      // Fallback to mock data if API fails
+      return getMockSolutions(analysis.crisisType);
     }
   }
 
