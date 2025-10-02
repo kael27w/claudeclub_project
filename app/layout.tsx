@@ -5,8 +5,8 @@ import './globals.css';
 const inter = Inter({ subsets: ['latin'] });
 
 export const metadata: Metadata = {
-  title: 'Adaptive Travel Agent - AI Crisis Management',
-  description: 'Autonomous AI travel agent that handles travel crises in real-time',
+  title: 'Study Abroad Destination Intelligence - AI-Powered Travel Planning',
+  description: 'Get real-time, personalized study abroad destination insights with AI. Live costs, cultural tips, and budget optimization for international students.',
 };
 
 export default function RootLayout({

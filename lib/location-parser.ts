@@ -347,7 +347,7 @@ export class LocationParser {
   /**
    * Validate if a location exists
    */
-  async validateLocation(city: string, country: string): Promise<boolean> {
+  async validateLocation(_city: string, country: string): Promise<boolean> {
     try {
       await this.getCountryData(country);
       return true;

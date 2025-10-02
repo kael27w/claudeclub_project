@@ -75,14 +75,10 @@ ${crisis.metadata ? `Additional context: ${JSON.stringify(crisis.metadata)}` : '
 Provide a comprehensive analysis of this crisis situation.`;
 
     try {
-      const result = await sendMessage(prompt, systemPrompt);
-
-      if (!result.success || !result.response) {
-        throw new Error(result.error || 'Failed to analyze crisis');
-      }
+      const response = await sendMessage(prompt, systemPrompt);
 
       // Parse the JSON response
-      const analysisData = this.parseJsonResponse(result.response);
+      const analysisData = this.parseJsonResponse(response);
 
       return {
         crisisType: crisis.type,
@@ -152,13 +148,9 @@ Analysis reasoning: ${analysis.reasoning}
 Generate 3 distinct solutions (Fast, Balanced, Economical) in JSON array format.`;
 
     try {
-      const result = await sendMessage(prompt, systemPrompt);
+      const response = await sendMessage(prompt, systemPrompt);
 
-      if (!result.success || !result.response) {
-        throw new Error(result.error || 'Failed to generate solutions');
-      }
-
-      const solutionsData = this.parseJsonResponse(result.response);
+      const solutionsData = this.parseJsonResponse(response);
       const solutions: Solution[] = Array.isArray(solutionsData)
         ? solutionsData
         : [solutionsData];

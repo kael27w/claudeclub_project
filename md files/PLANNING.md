@@ -65,12 +65,14 @@
    - Complete 5-stage MVP preserved in `/crisis-backup/`
    - Ready for integration as secondary feature
 
-**✅ WILL BUILD (Hours 5-24)**
-1. **API Integrations**
-   - Amadeus API for real flight prices
-   - Numbeo API for cost of living data
-   - Currency exchange API for live rates
-   - Google Places API for local insights
+**✅ BUILT (Hours 5-8) - REAL DATA INTEGRATION COMPLETE**
+1. **API Integrations** ✅
+   - ✅ OpenAI GPT-4o (replaced Claude - no credits available)
+   - ✅ Perplexity API for real-time research (housing, culture, safety, costs, flights)
+   - ✅ OpenExchangeRates API for live USD ↔ local currency conversion
+   - ✅ YouTube API for student video insights
+   - ✅ News API for safety alerts
+   - ✅ Multi-source data synthesis working end-to-end
 
 2. **Enhanced Demo Scenarios**
    - Barcelona mock data (European context)

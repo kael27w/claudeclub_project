@@ -2,6 +2,11 @@
 
 import { useState } from 'react';
 import type { DestinationIntelligence } from '@/lib/types/destination';
+import RedditInsights from '@/components/RedditInsights';
+import YouTubeVideos from '@/components/YouTubeVideos';
+import NewsAlerts from '@/components/NewsAlerts';
+import CurrencyWidget from '@/components/CurrencyWidget';
+import LoadingSkeleton from '@/components/LoadingSkeleton';
 
 /**
  * Study Abroad Destination Intelligence
@@ -120,8 +125,29 @@ export default function DestinationIntelligence() {
           )}
         </div>
 
+        {/* Loading State */}
+        {loading && (
+          <div className="mb-8 space-y-6">
+            <div className="bg-white rounded-2xl shadow-xl p-8 text-center">
+              <div className="inline-flex items-center justify-center w-16 h-16 bg-blue-100 rounded-full mb-4">
+                <div className="w-8 h-8 border-4 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
+              </div>
+              <h3 className="text-xl font-semibold text-gray-900 mb-2">
+                Analyzing Your Destination...
+              </h3>
+              <p className="text-gray-600 mb-6">
+                Gathering live data from multiple sources including flight prices, housing costs, community insights, and safety alerts
+              </p>
+              <div className="max-w-2xl mx-auto space-y-3">
+                <LoadingSkeleton type="card" count={1} />
+                <LoadingSkeleton type="text" count={3} />
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* Results Display */}
-        {intelligence && (
+        {intelligence && !loading && (
           <div className="mb-8 space-y-6">
             {/* Summary */}
             <div className="bg-white rounded-2xl shadow-xl p-8">
@@ -264,7 +290,9 @@ export default function DestinationIntelligence() {
                     intelligence.budgetPlan.feasibility === 'tight' ? 'bg-yellow-100 text-yellow-800' :
                     'bg-red-100 text-red-800'
                   }`}>
-                    {intelligence.budgetPlan.feasibility.charAt(0).toUpperCase() + intelligence.budgetPlan.feasibility.slice(1)}
+                    {intelligence.budgetPlan.feasibility ?
+                      intelligence.budgetPlan.feasibility.charAt(0).toUpperCase() + intelligence.budgetPlan.feasibility.slice(1) :
+                      'Unknown'}
                   </div>
                 </div>
 
@@ -369,6 +397,38 @@ export default function DestinationIntelligence() {
                 ))}
               </div>
             </div>
+
+            {/* Enhanced Currency Widget */}
+            <CurrencyWidget currency={intelligence.costAnalysis.currency} />
+
+            {/* Social Insights Section */}
+            {intelligence.socialInsights && (
+              <>
+                {/* Reddit Community Insights */}
+                {intelligence.socialInsights.reddit && (
+                  <RedditInsights
+                    insights={intelligence.socialInsights.reddit}
+                    city={intelligence.query.city}
+                  />
+                )}
+
+                {/* YouTube Student Experiences */}
+                {intelligence.socialInsights.youtube && (
+                  <YouTubeVideos
+                    insights={intelligence.socialInsights.youtube}
+                    city={intelligence.query.city}
+                  />
+                )}
+
+                {/* News & Safety Alerts */}
+                {intelligence.socialInsights.news && (
+                  <NewsAlerts
+                    alerts={intelligence.socialInsights.news}
+                    city={intelligence.query.city}
+                  />
+                )}
+              </>
+            )}
           </div>
         )}
 
@@ -448,6 +508,30 @@ export default function DestinationIntelligence() {
                 <h3 className="font-semibold text-gray-900 mb-1">Live Monitoring</h3>
                 <p className="text-sm text-gray-600">
                   Price alerts, currency fluctuations, and seasonal cost changes
+                </p>
+              </div>
+            </div>
+
+            <div className="flex items-start space-x-3">
+              <div className="flex-shrink-0 w-8 h-8 bg-orange-100 rounded-lg flex items-center justify-center">
+                <span className="text-orange-600 font-bold">🗣️</span>
+              </div>
+              <div>
+                <h3 className="font-semibold text-gray-900 mb-1">Community Insights</h3>
+                <p className="text-sm text-gray-600">
+                  Real student experiences from Reddit and YouTube vlogs
+                </p>
+              </div>
+            </div>
+
+            <div className="flex items-start space-x-3">
+              <div className="flex-shrink-0 w-8 h-8 bg-red-100 rounded-lg flex items-center justify-center">
+                <span className="text-red-600 font-bold">📰</span>
+              </div>
+              <div>
+                <h3 className="font-semibold text-gray-900 mb-1">Safety News</h3>
+                <p className="text-sm text-gray-600">
+                  Current news alerts and safety information from trusted sources
                 </p>
               </div>
             </div>

@@ -88,6 +88,62 @@ export interface CurrencyAnalysis {
   impact: string;
   budgetInLocalCurrency: number;
   recommendation: string;
+  historicalRates?: {
+    date: string;
+    rate: number;
+  }[];
+  lastUpdated?: string;
+}
+
+export interface RedditPost {
+  title: string;
+  subreddit: string;
+  score: number;
+  url: string;
+  createdAt: string;
+  keyTakeaway: string;
+  relevance: 'high' | 'medium' | 'low';
+}
+
+export interface RedditInsights {
+  posts: RedditPost[];
+  communitySummary: string;
+  topSubreddits: string[];
+  commonTopics: string[];
+}
+
+export interface YouTubeVideo {
+  title: string;
+  videoId: string;
+  url: string;
+  channelName: string;
+  viewCount: number;
+  publishedAt: string;
+  thumbnail: string;
+  duration: string;
+  relevance: 'high' | 'medium' | 'low';
+}
+
+export interface YouTubeInsights {
+  videos: YouTubeVideo[];
+  topicsFound: string[];
+  averageViews: number;
+}
+
+export interface NewsArticle {
+  title: string;
+  source: string;
+  url: string;
+  publishedAt: string;
+  description: string;
+  category: 'safety' | 'housing' | 'transport' | 'general' | 'student';
+  relevance: 'high' | 'medium' | 'low';
+}
+
+export interface NewsAlerts {
+  articles: NewsArticle[];
+  safetyLevel: 'safe' | 'caution' | 'warning';
+  summary: string;
 }
 
 export interface CulturalIntelligence {
@@ -184,6 +240,11 @@ export interface DestinationIntelligence {
   culturalGuide: CulturalIntelligence;
   budgetPlan: BudgetOptimization;
   recommendations: PersonalizedRecommendations;
+  socialInsights?: {
+    reddit?: RedditInsights;
+    youtube?: YouTubeInsights;
+    news?: NewsAlerts;
+  };
   alerts: {
     priceAlerts: string[];
     currencyAlerts: string[];

@@ -4,9 +4,14 @@
  * Works for ANY study abroad destination worldwide
  */
 
-import { sendMessage } from './claude-client';
+import { sendOpenAIMessage } from './openai-client';
 import { locationParser } from './location-parser';
 import { perplexityService } from './perplexity-agents';
+import { cacheService } from './services/cache-service';
+import { redditService } from './services/reddit-service';
+import { youtubeService } from './services/youtube-service';
+import { newsAPIService } from './services/news-service';
+import { currencyService } from './services/currency-service';
 import type {
   DestinationQuery,
   DestinationIntelligence,
@@ -15,7 +20,8 @@ import type { ParsedLocation, UserOrigin } from './location-parser';
 import type { PerplexityResearchResults } from './perplexity-agents';
 
 const DEMO_MODE = process.env.NEXT_PUBLIC_DEMO_MODE === 'true';
-const USE_PERPLEXITY = process.env.PERPLEXITY_API_KEY && process.env.PERPLEXITY_API_KEY.length > 0;
+const USE_PERPLEXITY = process.env.USE_PERPLEXITY === 'true' && process.env.PERPLEXITY_API_KEY && process.env.PERPLEXITY_API_KEY.length > 0;
+// Default to OpenAI for faster responses (single call vs 5 Perplexity calls)
 
 export class DestinationIntelligenceAgent {
   /**
@@ -50,7 +56,7 @@ Return ONLY valid JSON with this structure:
     const prompt = `Parse this study abroad query:\n\n"${rawQuery}"\n\nReturn structured JSON:`;
 
     try {
-      const response = await sendMessage(prompt, systemPrompt);
+      const response = await sendOpenAIMessage(prompt, systemPrompt);
       const parsed = JSON.parse(response);
 
       // Use location parser to validate and enhance location data
@@ -96,9 +102,24 @@ Return ONLY valid JSON with this structure:
 
   /**
    * Generate comprehensive destination intelligence
-   * UNIVERSAL VERSION: Uses Perplexity research + Claude synthesis
+   * ENHANCED VERSION: Uses multi-source data with smart caching and fallback
    */
   async generateIntelligence(query: DestinationQuery): Promise<DestinationIntelligence> {
+    // Check cache first
+    const cacheKey = cacheService.generateKey(
+      `${query.city},${query.country}`,
+      query.origin.city || query.origin.state || query.origin.country,
+      query.budget,
+      query.interests,
+      query.durationMonths
+    );
+
+    const cached = cacheService.get<DestinationIntelligence>(cacheKey);
+    if (cached) {
+      console.log('[DestAgent] ✓ Using cached intelligence');
+      return cached;
+    }
+
     // Demo mode: skip research, use mock data
     if (DEMO_MODE) {
       console.log('[DestAgent] Demo mode: Using mock destination intelligence');
@@ -116,27 +137,98 @@ Return ONLY valid JSON with this structure:
     }
 
     try {
-      // Step 1: Conduct Perplexity research (if configured)
-      let perplexityResearch: PerplexityResearchResults | null = null;
+      console.log('[DestAgent] 🔄 Generating fresh intelligence with multi-source data...');
+      console.log('[DestAgent] ========== SERVICE STATUS ==========');
 
-      if (USE_PERPLEXITY && perplexityService.isConfigured()) {
-        console.log('[DestAgent] Conducting Perplexity research for', query.city);
-        perplexityResearch = await perplexityService.conductResearch(
-          parsedLocation,
-          parsedOrigin,
-          query
-        );
-        console.log('[DestAgent] Perplexity research complete');
-      } else {
-        console.log('[DestAgent] Perplexity not configured, using Claude direct generation');
-      }
+      // Check which services are enabled
+      const perplexityEnabled = USE_PERPLEXITY && perplexityService.isConfigured();
+      const newsEnabled = newsAPIService.isConfigured();
+      const currencyEnabled = currencyService.isConfigured();
 
-      // Step 2: Use Claude to synthesize research or generate from scratch
-      if (perplexityResearch) {
-        return await this.synthesizePerplexityResearch(query, perplexityResearch);
-      } else {
-        return await this.generateWithClaude(query);
-      }
+      console.log(`[Agent] Perplexity: ${perplexityEnabled ? 'ENABLED' : 'DISABLED'}`);
+      console.log(`[Agent] OpenAI: ENABLED (primary synthesis)`);
+      console.log(`[Agent] Currency: ${currencyEnabled ? 'ENABLED' : 'DISABLED'}`);
+      console.log(`[Agent] News: ${newsEnabled ? 'ENABLED' : 'DISABLED'}`);
+      console.log(`[Agent] YouTube: SKIPPED (disabled for demo)`);
+      console.log(`[Agent] Reddit: SKIPPED (disabled for demo)`);
+      console.log(`[Agent] Gemini: SKIPPED (disabled for demo)`);
+      console.log('[DestAgent] ====================================');
+
+      // Step 1: Gather data from all sources in parallel
+      const [
+        perplexityResearch,
+        newsAlerts,
+        currencyData,
+      ] = await Promise.allSettled([
+        // Primary: Perplexity research (if configured)
+        perplexityEnabled
+          ? (async () => {
+              console.log('[Agent] Perplexity: Calling API...');
+              const result = await perplexityService.conductResearch(parsedLocation, parsedOrigin, query);
+              console.log('[Agent] Perplexity: SUCCESS');
+              return result;
+            })()
+          : Promise.resolve(null),
+
+        // News API
+        newsEnabled
+          ? (async () => {
+              console.log('[Agent] News: Calling API...');
+              const result = await newsAPIService.getNewsAlerts(query.city, query.country).catch((err) => {
+                console.log('[Agent] News: FAILED -', err.message);
+                return null;
+              });
+              if (result) console.log('[Agent] News: SUCCESS');
+              return result;
+            })()
+          : Promise.resolve(null),
+
+        // Currency API
+        currencyEnabled
+          ? (async () => {
+              console.log('[Agent] Currency: Calling API...');
+              console.log(`[Agent] Currency: Converting ${query.currency} -> ${this.getLocalCurrency(query.country)} for budget ${query.budget}`);
+              const result = await currencyService.getCurrencyData(query.currency, this.getLocalCurrency(query.country), query.budget).catch((err) => {
+                console.log('[Agent] Currency: FAILED -', err.message);
+                return null;
+              });
+              if (result) {
+                console.log('[Agent] Currency: SUCCESS');
+                console.log('[Agent] Currency: 🔍 Received data:', JSON.stringify(result, null, 2));
+              } else {
+                console.log('[Agent] Currency: ⚠️ Result is NULL');
+              }
+              return result;
+            })()
+          : Promise.resolve(null),
+      ]);
+
+      // Extract successful results
+      const perplexity = perplexityResearch.status === 'fulfilled' ? perplexityResearch.value : null;
+      const news = newsAlerts.status === 'fulfilled' ? newsAlerts.value : null;
+      const currency = currencyData.status === 'fulfilled' ? currencyData.value : null;
+
+      console.log('[DestAgent] ========== FINAL STATUS ==========');
+      console.log(`[Agent] Perplexity: ${perplexity ? 'SUCCESS' : 'NULL'}`);
+      console.log(`[Agent] News: ${news ? 'SUCCESS' : 'NULL'}`);
+      console.log(`[Agent] Currency: ${currency ? 'SUCCESS' : 'NULL'}`);
+      console.log(`[Agent] YouTube: SKIPPED`);
+      console.log(`[Agent] Reddit: SKIPPED`);
+      console.log('[DestAgent] ====================================');
+
+      // Step 2: Synthesize all data with OpenAI
+      console.log('[Agent] OpenAI: Calling synthesis API...');
+      const intelligence = await this.synthesizeMultiSourceData(
+        query,
+        { perplexity, reddit: null, youtube: null, news, currency }
+      );
+      console.log('[Agent] OpenAI: SUCCESS');
+
+      // Step 3: Cache the result
+      cacheService.set(cacheKey, intelligence);
+      console.log('[DestAgent] ✓ Intelligence cached');
+
+      return intelligence;
     } catch (error) {
       console.error('[DestAgent] Intelligence generation failed:', error);
       console.log('[DestAgent] Falling back to mock data');
@@ -145,12 +237,351 @@ Return ONLY valid JSON with this structure:
   }
 
   /**
+   * Synthesize multi-source data into comprehensive intelligence
+   * Combines Perplexity, Reddit, YouTube, News, and Currency data
+   */
+  private async synthesizeMultiSourceData(
+    query: DestinationQuery,
+    sources: {
+      perplexity: PerplexityResearchResults | null;
+      reddit: any;
+      youtube: any;
+      news: any;
+      currency: any;
+    }
+  ): Promise<DestinationIntelligence> {
+    // If we have Perplexity data, use it as the base
+    if (sources.perplexity) {
+      const intelligence = await this.synthesizePerplexityResearch(query, sources.perplexity, sources.currency);
+
+      // Enhance with social insights
+      if (sources.reddit || sources.youtube || sources.news) {
+        intelligence.socialInsights = {
+          reddit: sources.reddit || undefined,
+          youtube: sources.youtube || undefined,
+          news: sources.news || undefined,
+        };
+      }
+
+      // Enhance currency data if available - USE THE REAL API DATA
+      if (sources.currency) {
+        console.log('[DestAgent] 💰 Applying REAL currency data from API:', JSON.stringify(sources.currency, null, 2));
+        intelligence.costAnalysis.currency = sources.currency;
+      }
+
+      // Update confidence score based on data sources
+      const sourceCount = Object.values(sources).filter(s => s !== null).length;
+      intelligence.confidence = Math.min(0.95, 0.7 + (sourceCount * 0.05));
+
+      return intelligence;
+    }
+
+    // Fallback to Claude-only generation with enhanced context
+    return await this.generateWithClaudeEnhanced(query, sources);
+  }
+
+  /**
+   * Generate intelligence with Claude using enhanced context from free APIs
+   */
+  private async generateWithClaudeEnhanced(
+    query: DestinationQuery,
+    sources: {
+      reddit: any;
+      youtube: any;
+      news: any;
+      currency: any;
+    }
+  ): Promise<DestinationIntelligence> {
+    const systemPrompt = `You are an expert study abroad advisor. Return ONLY valid JSON - no markdown, no explanations.
+
+CRITICAL: You MUST return a JSON object with this EXACT structure:
+
+{
+  "summary": "Brief overview...",
+  "costAnalysis": {
+    "flights": {
+      "currentPrice": {
+        "amount": 850,
+        "currency": "USD",
+        "route": "Virginia → São Paulo"
+      },
+      "priceRange": {
+        "min": 650,
+        "max": 1200,
+        "average": 850
+      },
+      "trend": "stable",
+      "prediction": "Price prediction text",
+      "bookingRecommendation": "Booking advice",
+      "bestTimeToBook": "Best time to book"
+    },
+    "housing": {
+      "studentHousing": {
+        "monthly": { "min": 300, "max": 600, "average": 450 },
+        "availability": "high",
+        "options": ["Dormitories", "Student houses"]
+      },
+      "airbnb": {
+        "monthly": { "min": 500, "max": 1200, "average": 800 },
+        "neighborhoods": ["Pinheiros", "Vila Madalena"]
+      },
+      "apartments": {
+        "monthly": { "min": 400, "max": 900, "average": 650 },
+        "typical": "Studio description"
+      },
+      "recommendations": ["Housing tips"]
+    },
+    "livingCosts": {
+      "food": {
+        "monthly": { "min": 200, "max": 400, "average": 300 },
+        "groceries": 150,
+        "restaurants": 100,
+        "studentMeals": 50
+      },
+      "transport": {
+        "monthly": { "min": 40, "max": 80, "average": 60 },
+        "publicTransport": "Metro description",
+        "studentDiscounts": ["Discounts"]
+      },
+      "entertainment": {
+        "monthly": { "min": 50, "max": 200, "average": 100 },
+        "activities": ["Activities list"]
+      },
+      "utilities": {
+        "monthly": { "min": 40, "max": 60, "average": 50 },
+        "included": ["What's included"]
+      },
+      "total": {
+        "monthly": { "min": 600, "max": 1500, "average": 1000 }
+      }
+    },
+    "currency": {
+      "exchangeRate": 5.2,
+      "fromCurrency": "USD",
+      "toCurrency": "BRL",
+      "trend": "stable",
+      "impact": "Impact description",
+      "budgetInLocalCurrency": 10400,
+      "recommendation": "Currency advice"
+    }
+  },
+  "culturalGuide": {
+    "localCustoms": { ... },
+    "studentLife": { ... },
+    "language": {
+      "primaryLanguage": "Portuguese",
+      "essentialPhrases": [{"phrase": "Olá", "translation": "Hello", "pronunciation": "oh-LAH"}],
+      "englishProficiency": "medium",
+      "languageLearningResources": []
+    },
+    "safety": {
+      "overallRating": 7,
+      "safeNeighborhoods": ["Pinheiros", "Vila Madalena"],
+      "areasToAvoid": [],
+      "emergencyContacts": [],
+      "safetyTips": []
+    },
+    "culturalContext": { ... }
+  },
+  "budgetPlan": {
+    "totalBudget": 2000,
+    "duration": 4,
+    "breakdown": {
+      "housing": {"amount": 433, "percentage": 53, "recommendation": "..."},
+      "food": {"amount": 184, "percentage": 22, "recommendation": "..."},
+      "transport": {"amount": 50, "percentage": 6, "recommendation": "..."},
+      "activities": {"amount": 100, "percentage": 12, "recommendation": "..."},
+      "utilities": {"amount": 50, "percentage": 6, "recommendation": "..."},
+      "emergency": {"amount": 0, "percentage": 0, "recommendation": "..."}
+    },
+    "monthlyAllocation": [],
+    "savingTips": ["Tips..."],
+    "costOptimizationStrategies": ["Strategies..."],
+    "feasibility": "tight",
+    "warningFlags": []
+  },
+  "recommendations": {
+    "basedOnInterests": [{"interest": "art", "recommendations": ["..."]}],
+    "basedOnOrigin": { ... },
+    "basedOnBudget": { ... },
+    "studentSpecific": { ... }
+  },
+  "alerts": {
+    "priceAlerts": [],
+    "currencyAlerts": [],
+    "seasonalAlerts": []
+  }
+}
+
+CRITICAL REQUIRED FIELDS:
+- budgetPlan.feasibility MUST be one of: "comfortable", "tight", or "insufficient"
+- All nested objects must include ALL required fields
+
+Return ONLY this JSON structure - no markdown code blocks, no extra text.`;
+
+    let contextData = '';
+
+    if (sources.reddit) {
+      contextData += `\n**REDDIT COMMUNITY INSIGHTS:**\n`;
+      contextData += `Key Insights: ${sources.reddit.keyInsights?.join(', ') || 'None'}\n`;
+      contextData += `Popular Topics: ${sources.reddit.popularTopics?.join(', ') || 'None'}\n`;
+      contextData += `Warnings: ${sources.reddit.warnings?.join(', ') || 'None'}\n`;
+    }
+
+    if (sources.youtube) {
+      contextData += `\n**YOUTUBE VIDEO INSIGHTS:**\n`;
+      contextData += `Top Videos: ${sources.youtube.videos?.length || 0} relevant videos found\n`;
+      contextData += `Topics Covered: ${sources.youtube.topicsFound?.join(', ') || 'None'}\n`;
+    }
+
+    if (sources.news) {
+      contextData += `\n**CURRENT NEWS & SAFETY:**\n`;
+      contextData += `Safety Level: ${sources.news.safetyLevel}\n`;
+      contextData += `Summary: ${sources.news.summary}\n`;
+      contextData += `Recent Articles: ${sources.news.articles?.length || 0}\n`;
+    }
+
+    if (sources.currency) {
+      contextData += `\n**LIVE CURRENCY DATA:**\n`;
+      contextData += `Exchange Rate: 1 ${sources.currency.fromCurrency} = ${sources.currency.exchangeRate} ${sources.currency.toCurrency}\n`;
+      contextData += `Trend: ${sources.currency.trend}\n`;
+      contextData += `Budget in Local Currency: ${sources.currency.budgetInLocalCurrency.toFixed(2)}\n`;
+    }
+
+    const prompt = `Analyze this study abroad plan with enhanced real-time data:
+
+**Query:** "${query.rawQuery}"
+
+**Structured Data:**
+- Destination: ${query.city}, ${query.country}
+- University: ${query.university || 'Not specified'}
+- Duration: ${query.durationMonths} months
+- Budget: ${query.currency} ${query.budget}
+- Interests: ${query.interests.join(', ')}
+- Origin: ${query.origin.city || query.origin.state || query.origin.country}
+
+${contextData}
+
+Provide comprehensive destination intelligence with realistic current data for 2024-2025, incorporating the community insights, video content, news alerts, and currency data provided above.
+
+Return DestinationIntelligence JSON:`;
+
+    try {
+      const response = await sendOpenAIMessage(prompt, systemPrompt, 4000);
+      console.log('[DestAgent] OpenAI response length:', response.length, 'chars');
+
+      const intelligence = JSON.parse(response);
+
+      console.log('[DestAgent] Parsed intelligence keys:', Object.keys(intelligence));
+      console.log('[DestAgent] costAnalysis keys:', Object.keys(intelligence.costAnalysis || {}));
+      console.log('[DestAgent] flights structure:', JSON.stringify(intelligence.costAnalysis?.flights, null, 2));
+      console.log('[DestAgent] budgetPlan keys:', Object.keys(intelligence.budgetPlan || {}));
+      console.log('[DestAgent] budgetPlan.feasibility:', intelligence.budgetPlan?.feasibility);
+
+      // Validate and fix flights structure if needed
+      if (!intelligence.costAnalysis?.flights?.currentPrice) {
+        console.error('[DestAgent] ❌ MISSING flights.currentPrice - OpenAI returned wrong structure');
+        console.error('[DestAgent] Current flights object:', JSON.stringify(intelligence.costAnalysis?.flights, null, 2));
+        console.error('[DestAgent] Applying fallback structure...');
+
+        intelligence.costAnalysis = intelligence.costAnalysis || {};
+        intelligence.costAnalysis.flights = {
+          currentPrice: {
+            amount: intelligence.costAnalysis.flights?.amount || 800,
+            currency: 'USD',
+            route: `${query.origin.state || query.origin.country} → ${query.city}`,
+          },
+          priceRange: {
+            min: intelligence.costAnalysis.flights?.priceRange?.min || 600,
+            max: intelligence.costAnalysis.flights?.priceRange?.max || 1100,
+            average: intelligence.costAnalysis.flights?.priceRange?.average || 800,
+          },
+          trend: intelligence.costAnalysis.flights?.trend || 'stable',
+          prediction: intelligence.costAnalysis.flights?.prediction || 'Prices vary by season',
+          bookingRecommendation: intelligence.costAnalysis.flights?.bookingRecommendation || 'Book 6-8 weeks in advance',
+          bestTimeToBook: intelligence.costAnalysis.flights?.bestTimeToBook || 'Weekdays offer better rates',
+        };
+      } else {
+        console.log('[DestAgent] ✅ flights.currentPrice structure is correct');
+      }
+
+      // Validate and fix budgetPlan.feasibility if needed
+      if (!intelligence.budgetPlan?.feasibility) {
+        console.error('[DestAgent] ❌ MISSING budgetPlan.feasibility');
+        console.error('[DestAgent] budgetPlan structure:', JSON.stringify(intelligence.budgetPlan, null, 2));
+
+        intelligence.budgetPlan = intelligence.budgetPlan || {};
+
+        // Calculate feasibility based on budget
+        const monthlyBudget = query.budget / query.durationMonths;
+        const estimatedMonthlyCost = intelligence.budgetPlan.totalEstimatedMonthlyCost ||
+                                    intelligence.costAnalysis?.livingCosts?.total?.monthly?.average ||
+                                    1000;
+
+        let feasibility: 'comfortable' | 'tight' | 'insufficient';
+        if (monthlyBudget >= estimatedMonthlyCost * 1.2) {
+          feasibility = 'comfortable';
+        } else if (monthlyBudget >= estimatedMonthlyCost * 0.9) {
+          feasibility = 'tight';
+        } else {
+          feasibility = 'insufficient';
+        }
+
+        intelligence.budgetPlan.feasibility = feasibility;
+        console.log('[DestAgent] Set fallback feasibility:', feasibility);
+      } else {
+        console.log('[DestAgent] ✅ budgetPlan.feasibility is set:', intelligence.budgetPlan.feasibility);
+      }
+
+      // Add social insights
+      const socialInsights: any = {};
+      if (sources.reddit) socialInsights.reddit = sources.reddit;
+      if (sources.youtube) socialInsights.youtube = sources.youtube;
+      if (sources.news) socialInsights.news = sources.news;
+
+      return {
+        ...intelligence,
+        query,
+        socialInsights: Object.keys(socialInsights).length > 0 ? socialInsights : undefined,
+        generatedAt: new Date().toISOString(),
+        confidence: 0.85, // Higher confidence with multi-source data
+      };
+    } catch (error) {
+      console.error('[DestAgent] Enhanced Claude generation failed:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Get local currency code for a country
+   */
+  private getLocalCurrency(country: string): string {
+    const currencies: Record<string, string> = {
+      'brazil': 'BRL',
+      'spain': 'EUR',
+      'japan': 'JPY',
+      'mexico': 'MXN',
+      'united kingdom': 'GBP',
+      'france': 'EUR',
+      'germany': 'EUR',
+      'italy': 'EUR',
+      'china': 'CNY',
+      'south korea': 'KRW',
+      'thailand': 'THB',
+      'australia': 'AUD',
+      'canada': 'CAD',
+    };
+    return currencies[country.toLowerCase()] || 'USD';
+  }
+
+  /**
    * Synthesize Perplexity research using Claude
    * Claude parses research text and structures it as DestinationIntelligence
    */
   private async synthesizePerplexityResearch(
     query: DestinationQuery,
-    research: PerplexityResearchResults
+    research: PerplexityResearchResults,
+    currencyData?: any
   ): Promise<DestinationIntelligence> {
     const systemPrompt = `You are a travel data analyst expert at parsing research into structured destination intelligence.
 
@@ -163,6 +594,46 @@ Key requirements:
 4. Generate personalized recommendations based on user interests
 5. Include warnings if budget seems insufficient
 
+CRITICAL: The costAnalysis.flights object MUST have this exact structure:
+{
+  "currentPrice": {
+    "amount": <number>,
+    "currency": "USD",
+    "route": "<origin> → <destination>"
+  },
+  "priceRange": {
+    "min": <number>,
+    "max": <number>,
+    "average": <number>
+  },
+  "trend": "stable" | "increasing" | "decreasing",
+  "prediction": "<string>",
+  "bookingRecommendation": "<string>",
+  "bestTimeToBook": "<string>"
+}
+
+🔴 CRITICAL: Essential Phrases MUST be in the LOCAL LANGUAGE, not English placeholders!
+For culturalGuide.language.essentialPhrases, you MUST provide at least 5 REAL phrases in the destination's native language with:
+- "phrase": The actual phrase in the local language (e.g., "Olá" for Portuguese, not "Hello")
+- "translation": The English meaning
+- "pronunciation": Simple phonetic spelling (e.g., "oh-LAH")
+
+Required phrases to include:
+1. Hello/Hi
+2. Thank you
+3. Please
+4. How much does this cost?
+5. Where is...?
+
+Example for Brazil:
+{
+  "phrase": "Quanto custa?",
+  "translation": "How much does this cost?",
+  "pronunciation": "KWAN-too KOOS-tah"
+}
+
+DO NOT use generic placeholders like "Local hello" - provide REAL language phrases!
+
 Return ONLY valid JSON - no markdown, no explanations, just the JSON object.`;
 
     const prompt = `Parse this destination research for ${query.city}, ${query.country}:
@@ -172,6 +643,15 @@ Return ONLY valid JSON - no markdown, no explanations, just the JSON object.`;
 - Duration: ${query.durationMonths} months
 - Budget: ${query.currency} ${query.budget}
 - Interests: ${query.interests.join(', ')}
+
+${currencyData ? `
+**LIVE CURRENCY EXCHANGE RATE (USE THIS FOR COST CONVERSIONS):**
+- Exchange Rate: 1 ${currencyData.fromCurrency} = ${currencyData.exchangeRate} ${currencyData.toCurrency}
+- Budget in Local Currency: ${currencyData.budgetInLocalCurrency.toFixed(2)} ${currencyData.toCurrency}
+
+🔴 CRITICAL: The research below contains costs in ${currencyData.toCurrency}. You MUST convert these to USD using the exchange rate above: divide by ${currencyData.exchangeRate}.
+For example: ${currencyData.toCurrency} 5,000 ÷ ${currencyData.exchangeRate} = $${(5000 / currencyData.exchangeRate).toFixed(2)} USD
+` : ''}
 
 **RESEARCH FROM 5 AGENTS:**
 
@@ -193,7 +673,7 @@ ${research.flights}
 ===
 
 Synthesize this research into comprehensive destination intelligence JSON with:
-- costAnalysis (extract all prices and convert to USD)
+- costAnalysis (extract all prices${currencyData ? ` in ${currencyData.toCurrency} and convert to USD using the exchange rate ${currencyData.exchangeRate}` : ' and convert to USD'})
 - culturalGuide (customs, phrases, safety ratings)
 - budgetPlan (calculate monthly breakdown based on ${query.budget} for ${query.durationMonths} months)
 - recommendations (personalized for interests: ${query.interests.join(', ')})
@@ -202,8 +682,432 @@ Synthesize this research into comprehensive destination intelligence JSON with:
 Return structured DestinationIntelligence JSON:`;
 
     try {
-      const response = await sendMessage(prompt, systemPrompt, 4000);
+      const response = await sendOpenAIMessage(prompt, systemPrompt, 4000);
+      console.log('[DestAgent/Perplexity] OpenAI response length:', response.length, 'chars');
+
       const intelligence = JSON.parse(response);
+
+      console.log('[DestAgent/Perplexity] Parsed intelligence keys:', Object.keys(intelligence));
+      console.log('[DestAgent/Perplexity] flights structure:', JSON.stringify(intelligence.costAnalysis?.flights, null, 2));
+
+      // Validate and fix flights structure if needed
+      if (!intelligence.costAnalysis?.flights?.currentPrice) {
+        console.error('[DestAgent/Perplexity] ❌ MISSING flights.currentPrice in Perplexity synthesis');
+        console.error('[DestAgent/Perplexity] Current flights object:', JSON.stringify(intelligence.costAnalysis?.flights, null, 2));
+        console.error('[DestAgent/Perplexity] Applying fallback structure...');
+
+        intelligence.costAnalysis = intelligence.costAnalysis || {};
+        intelligence.costAnalysis.flights = {
+          currentPrice: {
+            amount: intelligence.costAnalysis.flights?.amount || 800,
+            currency: 'USD',
+            route: `${query.origin.state || query.origin.country} → ${query.city}`,
+          },
+          priceRange: {
+            min: intelligence.costAnalysis.flights?.priceRange?.min || 600,
+            max: intelligence.costAnalysis.flights?.priceRange?.max || 1100,
+            average: intelligence.costAnalysis.flights?.priceRange?.average || 800,
+          },
+          trend: intelligence.costAnalysis.flights?.trend || 'stable',
+          prediction: intelligence.costAnalysis.flights?.prediction || 'Prices vary by season',
+          bookingRecommendation: intelligence.costAnalysis.flights?.bookingRecommendation || 'Book 6-8 weeks in advance for best prices',
+          bestTimeToBook: intelligence.costAnalysis.flights?.bestTimeToBook || 'Weekdays typically offer better rates',
+        };
+      } else {
+        console.log('[DestAgent/Perplexity] ✅ flights.currentPrice structure is correct');
+      }
+
+      // Validate and fix housing structure if needed
+      console.log('[DestAgent/Perplexity] housing structure:', JSON.stringify(intelligence.costAnalysis?.housing, null, 2));
+      
+      // Check if housing structure exists and is valid
+      const housing = intelligence.costAnalysis?.housing;
+      
+      if (!housing || !housing.studentHousing || !housing.airbnb || !housing.apartments) {
+        console.error('[DestAgent/Perplexity] ❌ INVALID housing structure - rebuilding from scratch...');
+        
+        // Extract any available price info
+        let baseMin = 300, baseMax = 600, baseAvg = 450;
+        
+        if (housing && housing.monthlyRange) {
+          baseMin = housing.monthlyRange.min || 300;
+          baseMax = housing.monthlyRange.max || 600;
+          baseAvg = Math.round((baseMin + baseMax) / 2);
+        }
+        
+        // Rebuild complete housing structure
+        intelligence.costAnalysis = intelligence.costAnalysis || {};
+        intelligence.costAnalysis.housing = {
+          studentHousing: {
+            monthly: {
+              min: baseMin,
+              max: baseMax,
+              average: baseAvg
+            },
+            availability: housing?.availability || 'medium',
+            options: housing?.options || ['Student housing', 'Shared apartments', 'Dormitories']
+          },
+          airbnb: {
+            monthly: {
+              min: Math.round(baseMin * 1.5),
+              max: Math.round(baseMax * 2),
+              average: Math.round(baseAvg * 1.7)
+            },
+            neighborhoods: ['City center', 'Student districts', 'Popular areas']
+          },
+          apartments: {
+            monthly: {
+              min: Math.round(baseMin * 1.2),
+              max: Math.round(baseMax * 1.5),
+              average: Math.round(baseAvg * 1.4)
+            },
+            typical: housing?.type || 'Studio and one-bedroom apartments available'
+          },
+          recommendations: housing?.recommendations || [
+            'Consider shared housing to reduce costs',
+            'Check university housing office for verified listings',
+            'Student areas often offer better value and community'
+          ]
+        };
+        console.log('[DestAgent/Perplexity] ✅ Rebuilt complete housing structure');
+      } else {
+        // Housing types exist, but check if monthly is missing in each
+        if (housing.studentHousing && !housing.studentHousing.monthly) {
+          console.error('[DestAgent/Perplexity] ❌ MISSING studentHousing.monthly - fixing...');
+          const sh = housing.studentHousing;
+          
+          if (typeof sh.min === 'number' || typeof sh.average === 'number') {
+            intelligence.costAnalysis.housing.studentHousing = {
+              monthly: {
+                min: sh.min || 300,
+                max: sh.max || 600,
+                average: sh.average || 450
+              },
+              availability: sh.availability || 'medium',
+              options: sh.options || ['Student housing', 'Dormitories']
+            };
+            console.log('[DestAgent/Perplexity] ✅ Fixed studentHousing structure');
+          }
+        }
+        
+        if (housing.airbnb && !housing.airbnb.monthly) {
+          console.error('[DestAgent/Perplexity] ❌ MISSING airbnb.monthly - fixing...');
+          const ab = housing.airbnb;
+          
+          if (typeof ab.min === 'number' || typeof ab.average === 'number') {
+            intelligence.costAnalysis.housing.airbnb = {
+              monthly: {
+                min: ab.min || 500,
+                max: ab.max || 1200,
+                average: ab.average || 800
+              },
+              neighborhoods: ab.neighborhoods || ['City center', 'Student areas']
+            };
+            console.log('[DestAgent/Perplexity] ✅ Fixed airbnb structure');
+          }
+        }
+        
+        if (housing.apartments && !housing.apartments.monthly) {
+          console.error('[DestAgent/Perplexity] ❌ MISSING apartments.monthly - fixing...');
+          const apt = housing.apartments;
+          
+          if (typeof apt.min === 'number' || typeof apt.average === 'number') {
+            intelligence.costAnalysis.housing.apartments = {
+              monthly: {
+                min: apt.min || 400,
+                max: apt.max || 900,
+                average: apt.average || 650
+              },
+              typical: apt.typical || 'Studio apartments available'
+            };
+            console.log('[DestAgent/Perplexity] ✅ Fixed apartments structure');
+          }
+        }
+      }
+
+      // Validate and fix livingCosts structure
+      console.log('[DestAgent/Perplexity] livingCosts structure:', JSON.stringify(intelligence.costAnalysis?.livingCosts, null, 2));
+      
+      const livingCosts = intelligence.costAnalysis?.livingCosts;
+      
+      if (!livingCosts || !livingCosts.food || !livingCosts.transport || !livingCosts.entertainment || !livingCosts.utilities || !livingCosts.total) {
+        console.error('[DestAgent/Perplexity] ❌ INVALID livingCosts structure - rebuilding...');
+        
+        // Calculate base estimates from housing if available
+        const housingAvg = intelligence.costAnalysis?.housing?.studentHousing?.monthly?.average || 450;
+        
+        intelligence.costAnalysis = intelligence.costAnalysis || {};
+        intelligence.costAnalysis.livingCosts = {
+          food: {
+            monthly: { min: 200, max: 400, average: 300 },
+            groceries: 150,
+            restaurants: 100,
+            studentMeals: 50
+          },
+          transport: {
+            monthly: { min: 40, max: 80, average: 60 },
+            publicTransport: 'Public transport pass available',
+            studentDiscounts: ['Student discounts available']
+          },
+          entertainment: {
+            monthly: { min: 50, max: 200, average: 100 },
+            activities: ['Movies', 'Cafes', 'Cultural events']
+          },
+          utilities: {
+            monthly: { min: 40, max: 100, average: 60 },
+            included: ['Often included in student housing']
+          },
+          total: {
+            monthly: { 
+              min: Math.round(housingAvg * 0.5 + 330),
+              max: Math.round(housingAvg + 780),
+              average: Math.round(housingAvg + 520)
+            }
+          }
+        };
+        console.log('[DestAgent/Perplexity] ✅ Rebuilt livingCosts structure');
+      } else {
+        // Validate individual components have monthly nested structure
+        ['food', 'transport', 'entertainment', 'utilities', 'total'].forEach(category => {
+          if (livingCosts[category] && !livingCosts[category].monthly) {
+            console.error(`[DestAgent/Perplexity] ❌ MISSING ${category}.monthly - fixing...`);
+            const cat = livingCosts[category];
+            
+            if (typeof cat.min === 'number' || typeof cat.average === 'number') {
+              intelligence.costAnalysis.livingCosts[category] = {
+                ...cat,
+                monthly: {
+                  min: cat.min || 50,
+                  max: cat.max || 200,
+                  average: cat.average || 100
+                }
+              };
+              console.log(`[DestAgent/Perplexity] ✅ Fixed ${category} structure`);
+            }
+          }
+        });
+      }
+
+      // Validate currency structure - DO NOT default to 1.0, only validate structure
+      if (!intelligence.costAnalysis?.currency || !intelligence.costAnalysis.currency.exchangeRate || intelligence.costAnalysis.currency.exchangeRate === 1.0) {
+        console.error('[DestAgent/Perplexity] ❌ INVALID currency data - OpenAI did not properly use the real exchange rate!');
+        console.error('[DestAgent/Perplexity] Current currency object:', JSON.stringify(intelligence.costAnalysis?.currency, null, 2));
+        
+        // If we have real currency data from the API, it will be injected later in synthesizeMultiSourceData
+        // For now, just ensure the structure exists so it can be replaced
+        const localCurrency = this.getLocalCurrency(query.country);
+        
+        intelligence.costAnalysis = intelligence.costAnalysis || {};
+        intelligence.costAnalysis.currency = {
+          exchangeRate: 0, // PLACEHOLDER - will be replaced with real API data
+          fromCurrency: query.currency || 'USD',
+          toCurrency: localCurrency,
+          trend: 'stable',
+          impact: 'Fetching live exchange rates...',
+          budgetInLocalCurrency: 0, // PLACEHOLDER
+          recommendation: 'Live currency data will be loaded'
+        };
+        console.log('[DestAgent/Perplexity] ⚠️ Added placeholder currency structure (will be replaced with real API data)');
+      } else {
+        console.log('[DestAgent/Perplexity] ✅ Currency structure exists');
+      }
+
+      // Validate budgetPlan structure
+      if (!intelligence.budgetPlan || !intelligence.budgetPlan.breakdown || !intelligence.budgetPlan.feasibility) {
+        console.error('[DestAgent/Perplexity] ❌ MISSING budgetPlan - rebuilding...');
+        
+        const monthlyBudget = query.budget / query.durationMonths;
+        const housingCost = intelligence.costAnalysis?.housing?.studentHousing?.monthly?.average || 450;
+        const foodCost = intelligence.costAnalysis?.livingCosts?.food?.monthly?.average || 300;
+        const transportCost = intelligence.costAnalysis?.livingCosts?.transport?.monthly?.average || 60;
+        const entertainmentCost = intelligence.costAnalysis?.livingCosts?.entertainment?.monthly?.average || 100;
+        const utilitiesCost = intelligence.costAnalysis?.livingCosts?.utilities?.monthly?.average || 60;
+        
+        const totalMonthlyCost = housingCost + foodCost + transportCost + entertainmentCost + utilitiesCost;
+        
+        let feasibility: 'comfortable' | 'tight' | 'insufficient';
+        if (monthlyBudget >= totalMonthlyCost * 1.2) {
+          feasibility = 'comfortable';
+        } else if (monthlyBudget >= totalMonthlyCost * 0.9) {
+          feasibility = 'tight';
+        } else {
+          feasibility = 'insufficient';
+        }
+        
+        intelligence.budgetPlan = {
+          totalBudget: query.budget,
+          duration: query.durationMonths,
+          breakdown: {
+            housing: {
+              amount: housingCost,
+              percentage: Math.round((housingCost / totalMonthlyCost) * 100),
+              recommendation: 'Consider shared housing for better value'
+            },
+            food: {
+              amount: foodCost,
+              percentage: Math.round((foodCost / totalMonthlyCost) * 100),
+              recommendation: 'Mix cooking at home with affordable local restaurants'
+            },
+            transport: {
+              amount: transportCost,
+              percentage: Math.round((transportCost / totalMonthlyCost) * 100),
+              recommendation: 'Get a student transport pass'
+            },
+            activities: {
+              amount: entertainmentCost,
+              percentage: Math.round((entertainmentCost / totalMonthlyCost) * 100),
+              recommendation: 'Take advantage of free cultural events'
+            },
+            utilities: {
+              amount: utilitiesCost,
+              percentage: Math.round((utilitiesCost / totalMonthlyCost) * 100),
+              recommendation: 'Often included in student housing'
+            },
+            emergency: {
+              amount: 0,
+              percentage: 0,
+              recommendation: 'Set aside emergency funds if possible'
+            }
+          },
+          monthlyAllocation: [],
+          savingTips: [
+            'Cook at home to save on food costs',
+            'Use public transportation with student discounts',
+            'Look for free cultural events and activities',
+            'Share accommodation to reduce housing costs',
+            'Buy groceries at local markets'
+          ],
+          costOptimizationStrategies: [
+            'Live with roommates to split costs',
+            'Cook meals at home',
+            'Use student discounts wherever possible'
+          ],
+          feasibility: feasibility,
+          warningFlags: feasibility === 'insufficient' ? ['Budget may be insufficient for comfortable living'] : []
+        };
+        console.log('[DestAgent/Perplexity] ✅ Rebuilt budgetPlan structure');
+      }
+
+      // Validate culturalGuide structure
+      if (!intelligence.culturalGuide || !intelligence.culturalGuide.language || !intelligence.culturalGuide.safety) {
+        console.error('[DestAgent/Perplexity] ❌ MISSING culturalGuide - rebuilding...');
+        
+        intelligence.culturalGuide = {
+          localCustoms: {
+            greetings: ['Hello', 'Good morning', 'Good evening'],
+            diningEtiquette: ['Wait to be seated', 'Table manners'],
+            socialNorms: ['Be respectful', 'Learn basic phrases'],
+            tipping: 'Tipping is customary at 10-15%',
+            importantDos: ['Respect local customs', 'Learn basic language', 'Be punctual'],
+            importantDonts: ['Avoid loud behavior', 'Don\'t assume everyone speaks English']
+          },
+          studentLife: {
+            popularActivities: ['Student clubs', 'Sports', 'Cultural events'],
+            studentDiscounts: ['Museums', 'Transportation', 'Entertainment'],
+            socialGroups: ['International student association', 'Study groups'],
+            upcomingEvents: ['Orientation', 'Welcome week', 'Cultural festivals'],
+            bestNeighborhoods: ['University district', 'Student areas']
+          },
+          language: {
+            primaryLanguage: 'Local language',
+            essentialPhrases: [
+              { phrase: 'Hello', translation: 'Local hello', pronunciation: 'Pronunciation' },
+              { phrase: 'Thank you', translation: 'Local thank you', pronunciation: 'Pronunciation' },
+              { phrase: 'Please', translation: 'Local please', pronunciation: 'Pronunciation' },
+              { phrase: 'Excuse me', translation: 'Local excuse me', pronunciation: 'Pronunciation' },
+              { phrase: 'How much?', translation: 'Local how much', pronunciation: 'Pronunciation' },
+              { phrase: 'Where is...?', translation: 'Local where is', pronunciation: 'Pronunciation' }
+            ],
+            englishProficiency: 'medium',
+            languageLearningResources: ['Language apps', 'Local classes', 'Language exchange']
+          },
+          safety: {
+            overallRating: 7,
+            safeNeighborhoods: ['City center', 'University area', 'Residential districts'],
+            areasToAvoid: ['Avoid isolated areas at night'],
+            emergencyContacts: [
+              { service: 'Emergency', number: '911' },
+              { service: 'Police', number: 'Local police' },
+              { service: 'Hospital', number: 'Local hospital' }
+            ],
+            safetyTips: [
+              'Stay aware of your surroundings',
+              'Keep valuables secure',
+              'Use registered transportation',
+              'Travel in groups at night'
+            ]
+          },
+          culturalContext: {
+            connectionToOrigin: [`Connections to ${query.origin.country}`],
+            similarities: ['Cultural similarities'],
+            differences: ['Cultural differences to be aware of'],
+            adaptationTips: ['Be open-minded', 'Ask questions', 'Embrace new experiences']
+          }
+        };
+        console.log('[DestAgent/Perplexity] ✅ Rebuilt culturalGuide structure');
+      } else {
+        // Validate sub-structures
+        if (!intelligence.culturalGuide.language.essentialPhrases || !Array.isArray(intelligence.culturalGuide.language.essentialPhrases)) {
+          intelligence.culturalGuide.language.essentialPhrases = [
+            { phrase: 'Hello', translation: 'Local hello', pronunciation: 'Pronunciation' },
+            { phrase: 'Thank you', translation: 'Local thank you', pronunciation: 'Pronunciation' }
+          ];
+        }
+        if (!intelligence.culturalGuide.safety.safeNeighborhoods || !Array.isArray(intelligence.culturalGuide.safety.safeNeighborhoods)) {
+          intelligence.culturalGuide.safety.safeNeighborhoods = ['City center', 'University area'];
+        }
+        if (!intelligence.culturalGuide.safety.areasToAvoid || !Array.isArray(intelligence.culturalGuide.safety.areasToAvoid)) {
+          intelligence.culturalGuide.safety.areasToAvoid = [];
+        }
+        if (typeof intelligence.culturalGuide.safety.overallRating !== 'number') {
+          intelligence.culturalGuide.safety.overallRating = 7;
+        }
+      }
+
+      // Validate recommendations structure
+      if (!intelligence.recommendations || !intelligence.recommendations.basedOnInterests) {
+        console.error('[DestAgent/Perplexity] ❌ MISSING recommendations - rebuilding...');
+        
+        // Build recommendations based on user interests
+        const interestRecs = query.interests.map(interest => ({
+          interest: interest,
+          recommendations: [
+            `${interest} activities in ${query.city}`,
+            `Best places for ${interest}`,
+            `Student-friendly ${interest} spots`
+          ]
+        }));
+        
+        intelligence.recommendations = {
+          basedOnInterests: interestRecs.length > 0 ? interestRecs : [
+            { interest: 'culture', recommendations: ['Local cultural sites', 'Museums', 'Art galleries'] },
+            { interest: 'food', recommendations: ['Local restaurants', 'Street food', 'Markets'] }
+          ],
+          basedOnOrigin: {
+            culturalConnections: [`Communities from ${query.origin.country}`, 'International student groups'],
+            foodSimilarities: ['International cuisine options', 'Familiar food stores'],
+            communityGroups: ['Expat groups', 'Student associations']
+          },
+          basedOnBudget: {
+            affordable: ['Free walking tours', 'Public parks', 'Student discounts'],
+            splurgeWorthy: ['Special cultural events', 'Weekend trips', 'Fine dining'],
+            free: ['Free museums', 'Public events', 'Parks and beaches']
+          },
+          studentSpecific: {
+            campusLife: ['Student clubs', 'Campus events', 'Study groups'],
+            academicResources: ['Libraries', 'Study spaces', 'Academic support'],
+            networkingOpportunities: ['Student mixers', 'Career fairs', 'Alumni networks']
+          }
+        };
+        console.log('[DestAgent/Perplexity] ✅ Rebuilt recommendations structure');
+      } else {
+        // Validate basedOnInterests is an array
+        if (!Array.isArray(intelligence.recommendations.basedOnInterests)) {
+          intelligence.recommendations.basedOnInterests = [
+            { interest: 'culture', recommendations: ['Local cultural sites'] }
+          ];
+        }
+      }
 
       return {
         ...intelligence,
@@ -218,86 +1122,233 @@ Return structured DestinationIntelligence JSON:`;
   }
 
   /**
-   * Generate intelligence using Claude only (no Perplexity)
-   * Falls back to Claude's knowledge when Perplexity unavailable
-   */
-  private async generateWithClaude(query: DestinationQuery): Promise<DestinationIntelligence> {
-    const systemPrompt = `You are an expert study abroad advisor with deep knowledge of international destinations, costs, culture, and student life. Provide comprehensive, accurate, and actionable intelligence based on your knowledge.
-
-Focus on:
-1. REAL-TIME COST ANALYSIS: Current flight prices, housing costs, living expenses, currency impact
-2. CULTURAL INTEGRATION: Local customs, student activities, language tips, safety
-3. BUDGET OPTIMIZATION: Smart allocation, saving strategies, feasibility assessment
-4. PERSONALIZED RECOMMENDATIONS: Based on interests, origin, and budget
-
-Return ONLY valid JSON matching the DestinationIntelligence interface.`;
-
-    const prompt = `Analyze this study abroad plan:
-
-**Query:** "${query.rawQuery}"
-
-**Structured Data:**
-- Destination: ${query.city}, ${query.country}
-- University: ${query.university || 'Not specified'}
-- Duration: ${query.durationMonths} months
-- Budget: ${query.currency} ${query.budget}
-- Interests: ${query.interests.join(', ')}
-- Origin: ${query.origin.city || query.origin.state || query.origin.country}
-
-Provide comprehensive destination intelligence with realistic current data for 2024-2025.
-
-Return DestinationIntelligence JSON:`;
-
-    try {
-      const response = await sendMessage(prompt, systemPrompt, 3000);
-      const intelligence = JSON.parse(response);
-
-      return {
-        ...intelligence,
-        query,
-        generatedAt: new Date().toISOString(),
-        confidence: 0.8, // Lower confidence without real-time research
-      };
-    } catch (error) {
-      console.error('[DestAgent] Claude generation failed:', error);
-      throw error;
-    }
-  }
-
-  /**
    * Fallback query parser (simple pattern matching)
    */
   private fallbackParse(rawQuery: string): DestinationQuery {
-    // Simple extraction patterns
-    const cityMatch = rawQuery.match(/(?:in|at|to|studying at [A-Z]+\s+in)\s+([A-Za-z\s]+?)(?:,|\s+for)/i);
-    const budgetMatch = rawQuery.match(/(\$|€|£|¥|R\$)?\s*(\d+(?:,\d+)?(?:\.\d+)?)\s*(USD|EUR|GBP|JPY|BRL|dollars?|euros?)?/i);
-    const durationMatch = rawQuery.match(/(\d+)\s*(month|months|semester)/i);
+    // Enhanced extraction patterns with broader coverage
 
-    const city = cityMatch ? cityMatch[1].trim() : 'São Paulo';
-    const budget = budgetMatch ? parseFloat(budgetMatch[2].replace(',', '')) : 2000;
-    const durationMonths = durationMatch ? parseInt(durationMatch[1]) : 4;
+    // Extract location - try multiple patterns
+    const locationPatterns = [
+      // "Tokyo, Japan" format (city, country)
+      /^([A-Za-zÀ-ÿ\s]+),\s*([A-Za-zÀ-ÿ\s]+?)\s*(?:-|for|with|$)/i,
+      // "studying at FGV in São Paulo"
+      /studying\s+(?:at|in)\s+\w+\s+in\s+([A-Za-zÀ-ÿ\s]+?)(?:,|\s+for|\s+with)/i,
+      // "going to Barcelona", "to Barcelona", "in Barcelona"
+      /(?:going\s+to|to|in)\s+([A-Za-zÀ-ÿ\s]+?)(?:\s+for|\s+with|\s+,|\s+€|\s+\$|$)/i,
+      // "Bolivia for 6 months" (bare country/city at start)
+      /^([A-Za-zÀ-ÿ\s]+?)(?:\s+for|\s+with|\s+\$)/i,
+      // "London study abroad" (city THEN study keyword)
+      /^([A-Za-zÀ-ÿ\s]+?)\s+(?:study|studying|semester)/i,
+    ];
+
+    let destination: string | null = null;
+    let specifiedCountry: string | null = null;
+
+    for (const pattern of locationPatterns) {
+      const match = rawQuery.match(pattern);
+      if (match && match[1]) {
+        destination = match[1].trim();
+        // Check if pattern captured country separately (pattern 1)
+        if (match[2]) {
+          specifiedCountry = match[2].trim();
+        }
+        break;
+      }
+    }
+
+    // Extract budget with improved number parsing
+    // IMPORTANT: Must look for budget context to avoid matching duration numbers
+    const budgetPatterns = [
+      // "budget of $3500", "$3500 budget", "with $3500", etc.
+      /(?:budget\s+(?:of\s+)?|with\s+)(\$|€|£|¥|R\$)?\s*(\d+(?:,\d{3})*(?:\.\d+)?)/i,
+      // Currency symbol + number (but NOT followed by "month" to avoid duration)
+      /(\$|€|£|¥|R\$)\s*(\d+(?:,\d{3})*(?:\.\d+)?)(?!\s*month)/i,
+      // "2000 USD", "1500 EUR" format
+      /(\d+(?:,\d{3})*(?:\.\d+)?)\s+(USD|EUR|GBP|JPY|BRL|dollars?|euros?|pounds?)/i,
+    ];
+
+    let budgetValue = 2000; // Default fallback
+    let currency = 'USD';
+
+    for (const pattern of budgetPatterns) {
+      const match = rawQuery.match(pattern);
+      if (match) {
+        // Extract number - could be in group 1 or 2 depending on pattern
+        let numberStr: string;
+        if (/^\d/.test(match[1])) {
+          // Pattern 3: number is in group 1
+          numberStr = match[1].replace(/,/g, '');
+        } else {
+          // Patterns 1-2: number is in group 2
+          numberStr = match[2].replace(/,/g, '');
+        }
+        budgetValue = parseFloat(numberStr);
+
+        // Determine currency from symbol or text
+        const currencyIndicator = match[1] || match[2] || match[3] || '';
+        if (currencyIndicator === '€' || currencyIndicator.toLowerCase().includes('eur')) {
+          currency = 'EUR';
+        } else if (currencyIndicator === '£' || currencyIndicator.toLowerCase().includes('pound') || currencyIndicator.toLowerCase().includes('gbp')) {
+          currency = 'GBP';
+        } else if (currencyIndicator === 'R$' || currencyIndicator.toLowerCase().includes('brl')) {
+          currency = 'BRL';
+        } else if (currencyIndicator === '¥' || currencyIndicator.toLowerCase().includes('jpy')) {
+          currency = 'JPY';
+        }
+
+        break;
+      }
+    }
+
+    // Extract duration
+    const durationMatch = rawQuery.match(/(\d+)\s*(month|months|semester|week|weeks)/i);
+    let durationMonths = 4; // Default
+    if (durationMatch) {
+      const number = parseInt(durationMatch[1]);
+      const unit = durationMatch[2].toLowerCase();
+      durationMonths = unit.includes('week') ? Math.ceil(number / 4) :
+                       unit.includes('semester') ? 4 : number;
+    }
 
     // Extract interests
     const interests: string[] = [];
     if (/art/i.test(rawQuery)) interests.push('art');
-    if (/food/i.test(rawQuery)) interests.push('food');
+    if (/food|culinary|cuisine/i.test(rawQuery)) interests.push('food');
     if (/museum/i.test(rawQuery)) interests.push('museums');
     if (/night|club/i.test(rawQuery)) interests.push('nightlife');
-    if (/tech|technology/i.test(rawQuery)) interests.push('technology');
+    if (/tech|technology|engineering/i.test(rawQuery)) interests.push('technology');
     if (/architecture/i.test(rawQuery)) interests.push('architecture');
+    if (/music|concert/i.test(rawQuery)) interests.push('music');
+    if (/sport|fitness/i.test(rawQuery)) interests.push('sports');
+    if (/beach|surf/i.test(rawQuery)) interests.push('beaches');
+    if (/nature|hiking|outdoor/i.test(rawQuery)) interests.push('nature');
+
+    // Extract origin - MUST have context words to avoid matching destination
+    const originPatterns = [
+      // "from Virginia" or "coming from Bolivia" - explicit origin context
+      /(?:from|coming from|currently in|living in)\s+([A-Za-zÀ-ÿ\s]+?)(?:,|\s+|$)/i,
+    ];
+
+    let originCountry = 'United States'; // Default
+    let originState: string | undefined;
+
+    for (const pattern of originPatterns) {
+      const match = rawQuery.match(pattern);
+      if (match && match[1]) {
+        const location = match[1].trim();
+
+        // Check if it's a US state
+        if (/Virginia|California|New York|Texas|Florida|Illinois|Washington|Massachusetts/i.test(location)) {
+          originCountry = 'United States';
+          originState = location;
+          break;
+        }
+
+        // Check if it's a Latin American country
+        if (/Bolivia|Honduras|Mexico|Brazil|Colombia|Argentina|Peru|Venezuela/i.test(location)) {
+          originCountry = location;
+          originState = undefined;
+          break;
+        }
+      }
+    }
+
+    // Parse destination using location parser if possible
+    let city = destination || 'Barcelona'; // More neutral default
+    let country = specifiedCountry || 'Spain'; // More neutral default
+
+    if (destination) {
+      // Capitalize destination properly
+      city = destination.split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
+
+      // If country was specified explicitly in query (e.g., "Tokyo, Japan")
+      if (specifiedCountry) {
+        // Normalize and map country names
+        const countryNormalizations: Record<string, string> = {
+          'japan': 'Japan',
+          'spain': 'Spain',
+          'uk': 'United Kingdom',
+          'united kingdom': 'United Kingdom',
+          'england': 'United Kingdom',
+          'brazil': 'Brazil',
+          'france': 'France',
+          'germany': 'Germany',
+          'italy': 'Italy',
+          'usa': 'United States',
+          'us': 'United States',
+          'united states': 'United States',
+        };
+        country = countryNormalizations[specifiedCountry.toLowerCase()] ||
+                  specifiedCountry.split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
+      } else {
+        // Try to infer country from city name
+        const lowerDest = destination.toLowerCase();
+
+        // Check against known city-country mappings
+        const cityCountryMap: Record<string, { city: string; country: string }> = {
+          'barcelona': { city: 'Barcelona', country: 'Spain' },
+          'são paulo': { city: 'São Paulo', country: 'Brazil' },
+          'sao paulo': { city: 'São Paulo', country: 'Brazil' },
+          'tokyo': { city: 'Tokyo', country: 'Japan' },
+          'london': { city: 'London', country: 'United Kingdom' },
+          'paris': { city: 'Paris', country: 'France' },
+          'berlin': { city: 'Berlin', country: 'Germany' },
+          'rome': { city: 'Rome', country: 'Italy' },
+          'madrid': { city: 'Madrid', country: 'Spain' },
+          'amsterdam': { city: 'Amsterdam', country: 'Netherlands' },
+          'bolivia': { city: 'La Paz', country: 'Bolivia' },
+          'honduras': { city: 'Tegucigalpa', country: 'Honduras' },
+          'mexico': { city: 'Mexico City', country: 'Mexico' },
+          'colombia': { city: 'Bogotá', country: 'Colombia' },
+          'peru': { city: 'Lima', country: 'Peru' },
+        };
+
+        const match = cityCountryMap[lowerDest];
+        if (match) {
+          city = match.city;
+          country = match.country;
+        } else {
+          country = 'Unknown';
+        }
+      }
+    }
+
+    // Create parsed location metadata for currency service
+    const parsedLocation: ParsedLocation = {
+      city,
+      country,
+      latitude: 0, // Fallback mode doesn't have coordinates
+      longitude: 0,
+      continent: 'Unknown',
+      population: 0,
+      timezone: 'UTC',
+      currency,
+    };
+
+    const parsedOrigin: UserOrigin = {
+      city: undefined,
+      state: originState,
+      country: originCountry,
+      latitude: 0,
+      longitude: 0,
+    };
 
     return {
       rawQuery,
       city,
-      country: city.toLowerCase().includes('são paulo') ? 'Brazil' : 'Unknown',
+      country,
       duration: `${durationMonths} months`,
       durationMonths,
-      budget,
-      currency: 'USD',
+      budget: budgetValue,
+      currency,
       interests: interests.length > 0 ? interests : ['culture', 'food'],
       origin: {
-        country: rawQuery.toLowerCase().includes('virginia') ? 'USA' : 'USA',
-        state: rawQuery.toLowerCase().includes('virginia') ? 'Virginia' : undefined,
+        country: originCountry,
+        state: originState,
+      },
+      metadata: {
+        parsedLocation,
+        parsedOrigin,
       },
     };
   }

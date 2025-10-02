@@ -27,6 +27,9 @@ export async function POST(request: NextRequest) {
     // Step 2: Generate comprehensive intelligence
     const intelligence = await destinationAgent.generateIntelligence(parsedQuery);
     console.log('Generated intelligence for:', intelligence.query.city);
+    
+    // DEBUG: Log the exact structure for housing data
+    console.log('Housing structure:', JSON.stringify(intelligence.costAnalysis.housing, null, 2));
 
     return NextResponse.json({
       success: true,

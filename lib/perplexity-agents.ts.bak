@@ -24,99 +24,30 @@ export class PerplexityResearchService {
   }
 
   /**
-   * Conduct comprehensive research using Master Prompt Template
+   * Conduct comprehensive research using 5 specialized agents
    */
   async conductResearch(
     location: ParsedLocation,
     origin: UserOrigin,
     query: DestinationQuery
   ): Promise<PerplexityResearchResults> {
-    console.log('[Perplexity] Starting comprehensive research with Master Prompt Template');
+    // Run all 5 agents in parallel for speed
+    const [housing, cultural, safety, costs, flights] = await Promise.all([
+      this.housingAgent(location, origin, query),
+      this.culturalAgent(location, origin, query),
+      this.safetyAgent(location, origin, query),
+      this.costsAgent(location, origin, query),
+      this.flightsAgent(location, origin, query),
+    ]);
 
-    // Use new master prompt for single comprehensive query
-    const masterPrompt = this.buildMasterPrompt(location, origin, query);
-    const comprehensiveResearch = await this.queryPerplexity(masterPrompt, 3000);
-
-    console.log('[Perplexity] Research completed, response length:', comprehensiveResearch.length, 'chars');
-
-    // Return structured results (all in one comprehensive response)
     return {
-      housing: comprehensiveResearch,
-      cultural: comprehensiveResearch,
-      safety: comprehensiveResearch,
-      costs: comprehensiveResearch,
-      flights: comprehensiveResearch,
+      housing,
+      cultural,
+      safety,
+      costs,
+      flights,
       timestamp: Date.now(),
     };
-  }
-
-  /**
-   * Build Master Prompt Template for comprehensive research
-   */
-  private buildMasterPrompt(
-    location: ParsedLocation,
-    origin: UserOrigin,
-    query: DestinationQuery
-  ): string {
-    const university = query.university ? query.university : 'major universities';
-    const interests = query.interests.length > 0 ? query.interests.join(', ') : 'general activities';
-    const originLocation = origin.city || origin.state || origin.country;
-
-    // Determine local currency
-    const localCurrencyMap: Record<string, string> = {
-      'Brazil': 'BRL (Brazilian Real)',
-      'Japan': 'JPY (Japanese Yen)',
-      'Spain': 'EUR (Euro)',
-      'Mexico': 'MXN (Mexican Peso)',
-      'United Kingdom': 'GBP (British Pound)',
-      'France': 'EUR (Euro)',
-      'Germany': 'EUR (Euro)',
-      'Italy': 'EUR (Euro)',
-      'China': 'CNY (Chinese Yuan)',
-      'South Korea': 'KRW (Korean Won)',
-      'Thailand': 'THB (Thai Baht)',
-      'Australia': 'AUD (Australian Dollar)',
-      'Canada': 'CAD (Canadian Dollar)',
-    };
-    
-    const localCurrency = localCurrencyMap[location.country] || 'local currency';
-
-    return `You are an expert travel research assistant compiling a detailed briefing for a study abroad student. Your response must be factual, concise, and structured in Markdown.
-
-**Research Context:**
-* **Destination:** ${location.city}, ${location.country}
-* **Duration:** ${query.durationMonths} months
-* **Budget:** ${query.budget} ${query.currency}
-* **Student's Interests:** ${interests}
-* **Student's Origin:** ${originLocation}
-
-🔴 CRITICAL: ALL cost estimates MUST be provided in ${localCurrency}. Do NOT convert to USD.
-For example, if researching Brazil, provide costs in BRL (e.g., "R$ 1,500-2,500" not "$300-500").
-
-**Required Information (provide numerical ranges where possible):**
-
-### Cost of Living (ALL COSTS IN ${localCurrency})
--   Detailed monthly estimate for a single student on a budget.
--   Housing (shared apartment in a safe, student-friendly area) - provide cost in ${localCurrency}.
--   Food (mix of groceries and cheap eats) - provide cost in ${localCurrency}.
--   Local Transportation (monthly pass) - provide cost in ${localCurrency}.
--   Utilities (internet, mobile plan) - provide cost in ${localCurrency}.
-
-### Housing Options (COSTS IN ${localCurrency})
--   Typical cost for university dormitories vs. private shared apartments in ${localCurrency}.
--   Good, safe neighborhoods for students to live in near ${university}.
-
-### Cultural Insights
--   Key social etiquette and customs that might differ from ${originLocation}.
--   Brief overview of the student social scene and nightlife.
-
-### Safety Analysis
--   List 3-4 verifiably safe neighborhoods for students.
--   List 1-2 areas to be more cautious in, especially at night.
--   Mention any common scams targeting tourists or students.
-
-### Personalized Recommendations
--   Based on the student's interests in ${interests}, suggest 2-3 specific activities, locations, or experiences.`;
   }
 
   /**
@@ -326,7 +257,7 @@ Provide specific price ranges in both USD and ${location.currency}. Use current 
           'Authorization': `Bearer ${this.apiKey}`,
         },
         body: JSON.stringify({
-          model: 'sonar', // Perplexity's search model (replaces deprecated llama-3.1-sonar-large-128k-online)
+          model: 'llama-3.1-sonar-large-128k-online', // Perplexity's online model
           messages: [
             {
               role: 'system',
@@ -340,8 +271,7 @@ Provide specific price ranges in both USD and ${location.currency}. Use current 
           max_tokens: maxTokens,
           temperature: 0.2, // Low temperature for factual research
           top_p: 0.9,
-          // search_domain_filter removed - requires specific domains like "example.edu", not TLDs
-          // The 'sonar' model already prioritizes quality sources
+          search_domain_filter: ['edu', 'gov', 'org'], // Prefer authoritative sources
           return_images: false,
           return_related_questions: false,
         }),
