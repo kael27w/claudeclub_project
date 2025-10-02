@@ -61,6 +61,49 @@ export class CacheService {
   }
 
   /**
+   * Get cached entry with metadata (for stale-while-revalidate)
+   * Returns both data and metadata about the cache entry
+   */
+  getWithMetadata<T>(key: string): { data: T; isStale: boolean; age: number } | null {
+    const entry = this.cache.get(key);
+
+    if (!entry) {
+      return null;
+    }
+
+    // Check if expired
+    if (this.isExpired(entry)) {
+      this.cache.delete(key);
+      return null;
+    }
+
+    const age = Date.now() - entry.timestamp;
+    // Consider stale if older than 1 hour but not expired
+    const staleThreshold = 60 * 60 * 1000; // 1 hour
+    const isStale = age > staleThreshold;
+
+    return {
+      data: entry.data as T,
+      isStale,
+      age,
+    };
+  }
+
+  /**
+   * Check if a cache key exists and is stale (needs revalidation)
+   */
+  isStale(key: string, staleThreshold: number = 60 * 60 * 1000): boolean {
+    const entry = this.cache.get(key);
+
+    if (!entry || this.isExpired(entry)) {
+      return false;
+    }
+
+    const age = Date.now() - entry.timestamp;
+    return age > staleThreshold;
+  }
+
+  /**
    * Set cache data with optional custom TTL
    */
   set<T>(key: string, data: T, customTTL?: number): void {

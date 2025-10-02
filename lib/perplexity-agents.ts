@@ -15,6 +15,12 @@ export interface PerplexityResearchResults {
   timestamp: number;
 }
 
+export interface PreResearchData {
+  universities: string[];
+  neighborhoods: string[];
+  airportCodes: string[];
+}
+
 export class PerplexityResearchService {
   private apiKey: string;
   private readonly baseURL = 'https://api.perplexity.ai/chat/completions';
@@ -24,17 +30,71 @@ export class PerplexityResearchService {
   }
 
   /**
+   * Pre-research step: Get key local terms for better research accuracy
+   */
+  async conductPreResearch(
+    location: ParsedLocation
+  ): Promise<PreResearchData> {
+    console.log('[Perplexity] Starting pre-research fact-finding for', location.city, location.country);
+
+    const factFindingPrompt = `For the city of ${location.city}, ${location.country}, provide a brief, fact-only, comma-separated list for each category:
+1. Top 3 universities:
+2. 3 popular student-friendly neighborhoods:
+3. Main international airport code(s):
+
+Format your response as:
+Universities: [name1, name2, name3]
+Neighborhoods: [name1, name2, name3]
+Airports: [CODE1, CODE2]`;
+
+    const response = await this.queryPerplexity(factFindingPrompt, 500);
+    console.log('[Perplexity] Pre-research response:', response);
+
+    // Parse the response
+    const universities: string[] = [];
+    const neighborhoods: string[] = [];
+    const airportCodes: string[] = [];
+
+    // Extract universities
+    const uniMatch = response.match(/Universities?:\s*([^\n]+)/i);
+    if (uniMatch) {
+      universities.push(...uniMatch[1].split(',').map(s => s.trim()).filter(s => s.length > 0));
+    }
+
+    // Extract neighborhoods
+    const neighMatch = response.match(/Neighborhoods?:\s*([^\n]+)/i);
+    if (neighMatch) {
+      neighborhoods.push(...neighMatch[1].split(',').map(s => s.trim()).filter(s => s.length > 0));
+    }
+
+    // Extract airports
+    const airportMatch = response.match(/Airports?:\s*([^\n]+)/i);
+    if (airportMatch) {
+      airportCodes.push(...airportMatch[1].split(',').map(s => s.trim()).filter(s => s.length > 0));
+    }
+
+    console.log('[Perplexity] Extracted pre-research data:', { universities, neighborhoods, airportCodes });
+
+    return {
+      universities: universities.slice(0, 3),
+      neighborhoods: neighborhoods.slice(0, 3),
+      airportCodes: airportCodes.slice(0, 2),
+    };
+  }
+
+  /**
    * Conduct comprehensive research using Master Prompt Template
    */
   async conductResearch(
     location: ParsedLocation,
     origin: UserOrigin,
-    query: DestinationQuery
+    query: DestinationQuery,
+    preResearchData?: PreResearchData
   ): Promise<PerplexityResearchResults> {
     console.log('[Perplexity] Starting comprehensive research with Master Prompt Template');
 
     // Use new master prompt for single comprehensive query
-    const masterPrompt = this.buildMasterPrompt(location, origin, query);
+    const masterPrompt = this.buildMasterPrompt(location, origin, query, preResearchData);
     const comprehensiveResearch = await this.queryPerplexity(masterPrompt, 3000);
 
     console.log('[Perplexity] Research completed, response length:', comprehensiveResearch.length, 'chars');
@@ -56,7 +116,8 @@ export class PerplexityResearchService {
   private buildMasterPrompt(
     location: ParsedLocation,
     origin: UserOrigin,
-    query: DestinationQuery
+    query: DestinationQuery,
+    preResearchData?: PreResearchData
   ): string {
     const university = query.university ? query.university : 'major universities';
     const interests = query.interests.length > 0 ? query.interests.join(', ') : 'general activities';
@@ -78,8 +139,25 @@ export class PerplexityResearchService {
       'Australia': 'AUD (Australian Dollar)',
       'Canada': 'CAD (Canadian Dollar)',
     };
-    
+
     const localCurrency = localCurrencyMap[location.country] || 'local currency';
+
+    // Build keyword-enhanced prompts
+    let universityContext = university;
+    let neighborhoodContext = 'safe, student-friendly areas';
+    let airportContext = location.city;
+
+    if (preResearchData) {
+      if (preResearchData.universities.length > 0) {
+        universityContext = preResearchData.universities.join(', ');
+      }
+      if (preResearchData.neighborhoods.length > 0) {
+        neighborhoodContext = `${preResearchData.neighborhoods.join(', ')}, and other safe, student-friendly areas`;
+      }
+      if (preResearchData.airportCodes.length > 0) {
+        airportContext = `${preResearchData.airportCodes.join(' or ')}`;
+      }
+    }
 
     return `You are an expert travel research assistant compiling a detailed briefing for a study abroad student. Your response must be factual, concise, and structured in Markdown.
 
@@ -89,6 +167,9 @@ export class PerplexityResearchService {
 * **Budget:** ${query.budget} ${query.currency}
 * **Student's Interests:** ${interests}
 * **Student's Origin:** ${originLocation}
+* **Key Universities:** ${universityContext}
+* **Key Neighborhoods:** ${neighborhoodContext}
+* **Main Airport(s):** ${airportContext}
 
 🔴 CRITICAL: ALL cost estimates MUST be provided in ${localCurrency}. Do NOT convert to USD.
 For example, if researching Brazil, provide costs in BRL (e.g., "R$ 1,500-2,500" not "$300-500").
@@ -97,21 +178,21 @@ For example, if researching Brazil, provide costs in BRL (e.g., "R$ 1,500-2,500"
 
 ### Cost of Living (ALL COSTS IN ${localCurrency})
 -   Detailed monthly estimate for a single student on a budget.
--   Housing (shared apartment in a safe, student-friendly area) - provide cost in ${localCurrency}.
+-   Housing (shared apartment in ${neighborhoodContext}) - provide cost in ${localCurrency}.
 -   Food (mix of groceries and cheap eats) - provide cost in ${localCurrency}.
 -   Local Transportation (monthly pass) - provide cost in ${localCurrency}.
 -   Utilities (internet, mobile plan) - provide cost in ${localCurrency}.
 
 ### Housing Options (COSTS IN ${localCurrency})
 -   Typical cost for university dormitories vs. private shared apartments in ${localCurrency}.
--   Good, safe neighborhoods for students to live in near ${university}.
+-   Good, safe neighborhoods for students to live in, such as ${neighborhoodContext}, near ${universityContext}.
 
 ### Cultural Insights
 -   Key social etiquette and customs that might differ from ${originLocation}.
 -   Brief overview of the student social scene and nightlife.
 
 ### Safety Analysis
--   List 3-4 verifiably safe neighborhoods for students.
+-   List 3-4 verifiably safe neighborhoods for students (include ${neighborhoodContext} if applicable).
 -   List 1-2 areas to be more cautious in, especially at night.
 -   Mention any common scams targeting tourists or students.
 

@@ -47,3 +47,14 @@ next-env.d.ts
 # Claude Code
 .claude/
 .mcp.json
+.playwright-mcp/
+
+# Backup and temporary files
+crisis-backup/
+*.bak
+*.backup
+*.tmp
+
+# Documentation work-in-progress
+docs/tasks/
+*.draft.md

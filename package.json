@@ -9,7 +9,9 @@
     "start": "next start",
     "lint": "next lint",
     "type-check": "tsc --noEmit",
-    "test:claude": "tsx lib/test-claude.ts"
+    "test:claude": "tsx lib/test-claude.ts",
+    "cache:seed": "npx tsx scripts/seed-cache.ts",
+    "verify": "bash scripts/verify-setup.sh"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.30.1",

@@ -15,7 +15,7 @@ import type {
   DestinationIntelligence,
 } from './types/destination';
 import type { ParsedLocation, UserOrigin } from './location-parser';
-import type { PerplexityResearchResults } from './perplexity-agents';
+import type { PerplexityResearchResults, PreResearchData } from './perplexity-agents';
 
 const DEMO_MODE = process.env.NEXT_PUBLIC_DEMO_MODE === 'true';
 const USE_PERPLEXITY = process.env.USE_PERPLEXITY === 'true' && process.env.PERPLEXITY_API_KEY && process.env.PERPLEXITY_API_KEY.length > 0;
@@ -152,6 +152,19 @@ Return ONLY valid JSON with this structure:
       console.log(`[Agent] Gemini: SKIPPED (disabled for demo)`);
       console.log('[DestAgent] ====================================');
 
+      // Step 0: Pre-research to get key local terms (if Perplexity is enabled)
+      let preResearchData;
+      if (perplexityEnabled) {
+        try {
+          console.log('[Agent] 🔍 Starting pre-research fact-finding...');
+          preResearchData = await perplexityService.conductPreResearch(parsedLocation);
+          console.log('[Agent] 🔍 Pre-research complete:', preResearchData);
+        } catch (error) {
+          console.log('[Agent] ⚠️ Pre-research failed, continuing without enhanced keywords:', error);
+          preResearchData = undefined;
+        }
+      }
+
       // Step 1: Gather data from all sources in parallel
       const [
         perplexityResearch,
@@ -161,8 +174,8 @@ Return ONLY valid JSON with this structure:
         // Primary: Perplexity research (if configured)
         perplexityEnabled
           ? (async () => {
-              console.log('[Agent] Perplexity: Calling API...');
-              const result = await perplexityService.conductResearch(parsedLocation, parsedOrigin, query);
+              console.log('[Agent] Perplexity: Calling API with enhanced keywords...');
+              const result = await perplexityService.conductResearch(parsedLocation, parsedOrigin, query, preResearchData);
               console.log('[Agent] Perplexity: SUCCESS');
               return result;
             })()
