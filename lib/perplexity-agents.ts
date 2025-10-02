@@ -122,8 +122,10 @@ For example, if researching Brazil, provide costs in BRL (e.g., "R$ 1,500-2,500"
   /**
    * Agent 1: Housing Research
    * Finds current student housing costs and options
+   * NOTE: Legacy method - not currently used. Keeping for potential future use.
    */
-  private async housingAgent(
+  // @ts-ignore - Legacy method
+  private async _housingAgent(
     location: ParsedLocation,
     _origin: UserOrigin,
     query: DestinationQuery
@@ -148,8 +150,10 @@ Focus on practical, current information with specific price ranges. Include neig
   /**
    * Agent 2: Cultural Intelligence
    * Researches local culture, customs, and student life
+   * NOTE: Legacy method - not currently used. Keeping for potential future use.
    */
-  private async culturalAgent(
+  // @ts-ignore - Legacy method
+  private async _culturalAgent(
     location: ParsedLocation,
     origin: UserOrigin,
     query: DestinationQuery
@@ -179,8 +183,10 @@ Provide specific examples and practical advice. Include current prices in ${loca
   /**
    * Agent 3: Safety & Current Events
    * Researches safety, news, and practical information
+   * NOTE: Legacy method - not currently used. Keeping for potential future use.
    */
-  private async safetyAgent(
+  // @ts-ignore - Legacy method
+  private async _safetyAgent(
     location: ParsedLocation,
     origin: UserOrigin,
     _query: DestinationQuery
@@ -207,8 +213,10 @@ Focus on practical, current safety information. Include specific phone numbers f
   /**
    * Agent 4: Cost of Living
    * Detailed breakdown of monthly living expenses
+   * NOTE: Legacy method - not currently used. Keeping for potential future use.
    */
-  private async costsAgent(
+  // @ts-ignore - Legacy method
+  private async _costsAgent(
     location: ParsedLocation,
     _origin: UserOrigin,
     query: DestinationQuery
@@ -260,8 +268,10 @@ Provide specific numerical ranges in ${location.currency} and convert to USD. Us
   /**
    * Agent 5: Flight Intelligence
    * Researches flight prices and booking strategies
+   * NOTE: Legacy method - not currently used. Keeping for potential future use.
    */
-  private async flightsAgent(
+  // @ts-ignore - Legacy method
+  private async _flightsAgent(
     location: ParsedLocation,
     origin: UserOrigin,
     _query: DestinationQuery

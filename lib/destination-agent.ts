@@ -8,8 +8,6 @@ import { sendOpenAIMessage } from './openai-client';
 import { locationParser } from './location-parser';
 import { perplexityService } from './perplexity-agents';
 import { cacheService } from './services/cache-service';
-import { redditService } from './services/reddit-service';
-import { youtubeService } from './services/youtube-service';
 import { newsAPIService } from './services/news-service';
 import { currencyService } from './services/currency-service';
 import type {
@@ -1317,20 +1315,21 @@ Return structured DestinationIntelligence JSON:`;
     const parsedLocation: ParsedLocation = {
       city,
       country,
-      latitude: 0, // Fallback mode doesn't have coordinates
-      longitude: 0,
-      continent: 'Unknown',
-      population: 0,
+      countryCode: 'XX', // Fallback mode doesn't have country code
       timezone: 'UTC',
+      primaryLanguage: 'English',
       currency,
+      coordinates: {
+        lat: 0,
+        lng: 0,
+      },
     };
 
     const parsedOrigin: UserOrigin = {
       city: undefined,
       state: originState,
       country: originCountry,
-      latitude: 0,
-      longitude: 0,
+      countryCode: 'XX', // Fallback mode doesn't have country code
     };
 
     return {

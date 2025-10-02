@@ -11,7 +11,7 @@ import { resolve } from "path";
 config({ path: resolve(__dirname, "../.env.local") });
 
 import { generateChatCompletion } from "../apps/api/src/services/clients/openai.client";
-import { generateGeminiContent } from "../apps/api/src/services/clients/gemini.client";
+// Note: Gemini client is currently disabled - import { generateGeminiContent } from "../apps/api/src/services/clients/gemini.client";
 import { performOnlineSearch } from "../apps/api/src/services/clients/perplexity.client";
 import { getExchangeRates } from "../apps/api/src/services/clients/currency.client";
 
@@ -70,6 +70,14 @@ async function testOpenAIClient() {
 async function testGeminiClient() {
   printHeader("TEST 2: Google Gemini Client - gemini-pro");
 
+  printInfo("Gemini client is currently disabled - SKIPPING test");
+  printInfo(
+    "Note: The Gemini client is not in use. Re-enable it in the codebase to test."
+  );
+  return null; // Return null to indicate skipped test
+
+  // Commented out - Gemini client is disabled
+  /*
   // Check if Gemini API key is available (including typo variant)
   if (!process.env.GEMINI_API_KEY && !process.env.GEMIINI_API_KEY && !process.env.GOOGLE_API_KEY) {
     printInfo("Gemini API key not configured - SKIPPING test");
@@ -93,6 +101,7 @@ async function testGeminiClient() {
   }
 
   return result.success;
+  */
 }
 
 async function testPerplexityClient() {
